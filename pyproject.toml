@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-guard"
+version = "0.1.0"
+description = "kTsentinel Guard: detecção de movimento em câmeras RTSP com alertas FCM"
+requires-python = ">=3.11"
+dependencies = ["numpy", "requests", "google-auth"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+sentinel-guard = "sentinel_guard.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,31 @@
+# Copie para ~/.config/ktsentinel-guard/config.toml e rode: chmod 600 config.toml
+# NUNCA commite o arquivo preenchido.
+[general]
+armed = true
+# data_dir = "~/.local/share/ktsentinel-guard"
+cooldown_seconds = 60
+
+[fcm]
+project_id = "SEU-PROJECT-ID"
+service_account_file = "~/.config/ktsentinel-guard/fcm-service-account.json"
+topic = "sentinel_00000000000000000000000000000000"   # o mesmo tópico que o app assina
+title = "kTsentinel - Casa"
+
+[ntfy]            # reserva opcional
+enabled = false
+url = "https://ntfy.sh/seu-topico-secreto"
+
+[detection]
+sensitivity = 5            # 1-10
+min_area_pct = 0.5
+min_consecutive_frames = 3
+fps = 5
+history = 500
+warmup_seconds = 10
+
+[[cameras]]
+id = 1
+name = "Quintal"
+rtsp_url = "rtsp://IP_DVR:554/user=USUARIO&password=SENHA&channel=1&stream=0.sdp"
+rtsp_url_secondary = "rtsp://IP_DVR:554/user=USUARIO&password=SENHA&channel=1&stream=1.sdp"
+is_active = true
