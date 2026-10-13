@@ -19,7 +19,7 @@ Sem `python3-venv` (Debian/Mint): `python3 -m venv --system-site-packages --with
 
 ## Comandos
 `sentinel-guard [--config PATH] <cmd>`: `run`, `check-config`, `gen-topic`, `test-fcm [--dry-run]`,
-`test-camera [id]`, `events [--since]`, `status`, `arm`, `disarm`, `list-cameras`, `alerts`, `test-notification`, `reload-config`.
+`test-camera [id]`, `events [--since]`, `status`, `arm`, `disarm`, `list-cameras`, `test-notification`, `reload-config`.
 
 Validar FCM: `check-config` → `test-fcm --dry-run` (validate_only, nada é entregue) → `test-fcm` (chega no app).
 
