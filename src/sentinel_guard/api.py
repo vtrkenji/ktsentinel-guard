@@ -10,6 +10,7 @@ import hmac
 import json
 import logging
 import threading
+import time
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -25,7 +26,14 @@ ROUTES = {
 }
 
 
+MAX_FAILS = 5
+LOCKOUT_SECONDS = 300
+
+
 def make_handler(daemon, token: str):
+    fails: dict[str, list] = {}  # ip -> [contagem, bloqueado_até]
+    fails_lock = threading.Lock()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "sentinel-guard"
 
@@ -50,8 +58,20 @@ def make_handler(daemon, token: str):
         def _route(self, method):
             if method == "GET" and urlparse(self.path).path in ("/", "/index.html"):
                 return self._send(200, WEB_PAGE.read_bytes(), "text/html; charset=utf-8")  # sem dados; o token vai no JS
+            ip = self.client_address[0]
+            with fails_lock:
+                rec = fails.get(ip)
+                if rec and rec[1] > time.monotonic():
+                    return self._json(429, {"ok": False, "error": "muitas tentativas; aguarde"})
             if not self._authorized():
+                with fails_lock:
+                    rec = fails.setdefault(ip, [0, 0.0])
+                    rec[0] += 1
+                    if rec[0] >= MAX_FAILS:
+                        rec[:] = [0, time.monotonic() + LOCKOUT_SECONDS]
                 return self._json(401, {"ok": False, "error": "não autorizado"})
+            with fails_lock:
+                fails.pop(ip, None)
             url = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             try:

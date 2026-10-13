@@ -104,3 +104,20 @@ def test_web_page_is_public(tmp_path):
         assert TOKEN.encode() not in body
     finally:
         api.close()
+
+
+def test_lockout_after_failures(tmp_path):
+    tf = tmp_path / "token"
+    tf.write_text(TOKEN)
+    tf.chmod(0o600)
+    am = AlertManager(tmp_path / "d", Rules(notify=False), [])
+    api = ApiServer(ApiConfig(enabled=True, port=0, token_file=tf), FakeDaemon(am))
+    api.start()
+    base = f"http://127.0.0.1:{api.address[1]}"
+    try:
+        codes = [call(base, "/v1/status", token="x" * 40)[0] for _ in range(5)]
+        assert codes == [401] * 5
+        assert call(base, "/v1/status", token="x" * 40)[0] == 429
+        assert call(base, "/v1/status")[0] == 429  # bloqueado mesmo com token certo
+    finally:
+        api.close()
