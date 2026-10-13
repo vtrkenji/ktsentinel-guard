@@ -67,10 +67,19 @@ class ScheduleWindow:
 
 
 @dataclass
+class ApiConfig:
+    enabled: bool = False
+    bind: str = "127.0.0.1"   # use o IP do Tailscale/LAN para acesso remoto; nunca exponha na internet
+    port: int = 8765
+    token_file: Path | None = None
+
+
+@dataclass
 class Config:
     armed: bool = True
     data_dir: Path = field(default_factory=default_data_dir)
     rules: Rules = field(default_factory=Rules)
+    api: ApiConfig = field(default_factory=ApiConfig)
     schedule: list[ScheduleWindow] = field(default_factory=list)
     fcm: FcmConfig = field(default_factory=FcmConfig)
     ntfy: NtfyConfig = field(default_factory=NtfyConfig)
@@ -118,6 +127,10 @@ def load_config(path: Path, require_private: bool = True) -> Config:
         if k in g:
             setattr(r, k, type(getattr(r, k))(g[k]))
     cfg.rules = r
+    a = raw.get("api", {})
+    cfg.api = ApiConfig(
+        enabled=bool(a.get("enabled", False)), bind=a.get("bind", "127.0.0.1"), port=int(a.get("port", 8765)),
+        token_file=_expand(a["token_file"]) if a.get("token_file") else _expand("~/.config/ktsentinel-guard/api-token"))
     for w in raw.get("schedule", []):
         try:
             h1, m1 = map(int, w["start"].split(":"))

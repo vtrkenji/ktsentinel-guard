@@ -155,6 +155,17 @@ class AlertManager:
             out.append(e)
         return out
 
+    def snapshot_path(self, event_id: int, kind: str = "peak") -> Path | None:
+        """Caminho do snapshot de um evento; só devolve arquivos dentro de data_dir/snapshots."""
+        col = "peak_snapshot" if kind == "peak" else "snapshot"
+        with self._lock:
+            row = self._db.execute(f"SELECT {col} FROM events WHERE id=?", (event_id,)).fetchone()
+        if not row or not row[0]:
+            return None
+        p = Path(row[0]).resolve()
+        root = (self.data_dir / "snapshots").resolve()
+        return p if p.is_file() and root in p.parents else None
+
     @staticmethod
     def _dvr_window(start: str, end: str | None):
         s = datetime.fromisoformat(start)

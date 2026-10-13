@@ -39,3 +39,18 @@ test_notification, reload_config, list_events{limit,since}.
 `scripts/fake_rtsp.sh` (precisa de mediamtx + ffmpeg).
 
 **Segredos nunca vão para o git**: config.toml, chave FCM e credenciais RTSP ficam só em `~/.config/ktsentinel-guard/`.
+
+## API HTTP (controle remoto, opcional)
+
+Desligada por padrão. Para ativar, adicione ao config:
+
+```toml
+[api]
+enabled = true
+bind = "127.0.0.1"   # use o IP do Tailscale/LAN; nunca exponha na internet
+port = 8765
+```
+
+Gere o token com `sentinel-guard gen-token` (grava `~/.config/ktsentinel-guard/api-token`, perm 600) e envie
+`Authorization: Bearer <token>`. Rotas: `GET /v1/status`, `GET /v1/cameras`, `POST /v1/arm`, `POST /v1/disarm`,
+`GET /v1/events?limit=&since=`, `GET /v1/snapshot?id=N&kind=peak|start`.

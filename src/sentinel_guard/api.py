@@ -1,0 +1,102 @@
+"""API HTTP (JSON) para controle remoto. Desligada por padrão; autenticação por token Bearer.
+
+GET  /v1/status            GET  /v1/cameras
+POST /v1/arm               POST /v1/disarm
+GET  /v1/events?limit=&since=
+GET  /v1/snapshot?id=N&kind=peak|start   (JPEG)
+"""
+import hmac
+import json
+import logging
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+log = logging.getLogger("sentinel_guard.api")
+
+ROUTES = {
+    ("GET", "/v1/status"): "status",
+    ("GET", "/v1/cameras"): "list_cameras",
+    ("POST", "/v1/arm"): "arm",
+    ("POST", "/v1/disarm"): "disarm",
+}
+
+
+def make_handler(daemon, token: str):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "sentinel-guard"
+
+        def log_message(self, fmt, *args):
+            log.info("%s %s", self.address_string(), fmt % args)
+
+        def _send(self, code, body: bytes, ctype="application/json"):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json(self, code, obj):
+            self._send(code, json.dumps(obj, ensure_ascii=False).encode())
+
+        def _authorized(self) -> bool:
+            got = self.headers.get("Authorization", "")
+            return got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), token)
+
+        def _route(self, method):
+            if not self._authorized():
+                return self._json(401, {"ok": False, "error": "não autorizado"})
+            url = urlparse(self.path)
+            q = {k: v[0] for k, v in parse_qs(url.query).items()}
+            try:
+                if method == "GET" and url.path == "/v1/events":
+                    since = q.get("since")
+                    res = daemon.cmd_list_events(limit=min(int(q.get("limit", 50)), 500), since=since)
+                elif method == "GET" and url.path == "/v1/snapshot":
+                    kind = "start" if q.get("kind") == "start" else "peak"
+                    path = daemon.alerts.snapshot_path(int(q["id"]), kind)
+                    if path is None:
+                        return self._json(404, {"ok": False, "error": "snapshot não encontrado"})
+                    return self._send(200, path.read_bytes(), "image/jpeg")
+                elif (method, url.path) in ROUTES:
+                    res = getattr(daemon, f"cmd_{ROUTES[(method, url.path)]}")()
+                else:
+                    return self._json(404, {"ok": False, "error": "rota desconhecida"})
+            except (KeyError, ValueError) as e:
+                return self._json(400, {"ok": False, "error": f"parâmetro inválido: {e}"})
+            except Exception as e:
+                log.exception("erro na API")
+                return self._json(500, {"ok": False, "error": str(e)})
+            self._json(200, {"ok": True, "result": res})
+
+        def do_GET(self):
+            self._route("GET")
+
+        def do_POST(self):
+            self._route("POST")
+
+    return Handler
+
+
+class ApiServer:
+    def __init__(self, cfg, daemon):
+        path = cfg.token_file
+        if not path or not path.exists():
+            raise RuntimeError(f"token da API não encontrado: rode 'sentinel-guard gen-token' ({path})")
+        from .config import check_private
+        check_private(path)
+        token = path.read_text().strip()
+        if len(token) < 20:
+            raise RuntimeError("token da API muito curto")
+        self._httpd = ThreadingHTTPServer((cfg.bind, cfg.port), make_handler(daemon, token))
+        self._httpd.daemon_threads = True
+        self.address = self._httpd.server_address
+
+    def start(self) -> None:
+        threading.Thread(target=self._httpd.serve_forever, name="api", daemon=True).start()
+        log.info("API HTTP em %s:%s", *self.address)
+
+    def close(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()

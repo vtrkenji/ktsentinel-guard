@@ -125,6 +125,21 @@ def cmd_events(args):
     return 0
 
 
+def cmd_gen_token(args):
+    import os
+    import secrets
+    cfg = _load(args)
+    path = cfg.api.token_file
+    if path.exists() and not args.force:
+        print(f"{path} já existe (use --force para substituir)"); return 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(secrets.token_urlsafe(32) + "\n")
+    print(f"token gravado em {path} (600); copie-o para o app por um canal seguro")
+    return 0
+
+
 def cmd_gen_topic(args):
     print(generate_secure_topic())
     return 0
@@ -136,6 +151,9 @@ def main(argv=None):
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("run").set_defaults(fn=cmd_run)
     sub.add_parser("check-config").set_defaults(fn=cmd_check_config)
+    gt = sub.add_parser("gen-token", help="gera o token da API HTTP")
+    gt.add_argument("--force", action="store_true")
+    gt.set_defaults(fn=cmd_gen_token)
     sub.add_parser("gen-topic").set_defaults(fn=cmd_gen_topic)
     t = sub.add_parser("test-fcm")
     t.add_argument("--dry-run", action="store_true", help="valida na API sem entregar")
