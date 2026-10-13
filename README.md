@@ -6,6 +6,7 @@ movimento (OpenCV MOG2), salva snapshot, registra histórico (SQLite) e envia pu
 tópico `sentinel_<32 hex>` com título `kTsentinel - Casa` (mesmo formato do firmware ESP32).
 
 ## Instalação (notebook)
+Atalho: baixe `ktsentinel-guard-linux.tar.gz` em Releases, extraia e rode `./scripts/install.sh`. Manual:
 ```
 python3 -m venv --system-site-packages ~/.local/share/ktsentinel-guard/venv   # OpenCV do sistema
 ~/.local/share/ktsentinel-guard/venv/bin/pip install .
