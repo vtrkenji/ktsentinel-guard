@@ -68,6 +68,14 @@ def _draw_zones(frame, cam):
         for z in zones:
             pts = np.array([[int(x * w), int(y * h)] for x, y in z], np.int32)
             cv2.polylines(frame, [pts], True, color, 2)
+    if cam.loiter_zone:  # amarelo = zona de loitering; azul = tripwires
+        pts = np.array([[int(x * w), int(y * h)] for x, y in cam.loiter_zone], np.int32)
+        cv2.polylines(frame, [pts], True, (0, 220, 255), 2)
+    for t in cam.tripwires:
+        (x1, y1), (x2, y2) = t["line"]
+        cv2.line(frame, (int(x1 * w), int(y1 * h)), (int(x2 * w), int(y2 * h)), (255, 128, 0), 3)
+        cv2.putText(frame, f"{t['name']} ({t['direction']})", (int(x1 * w) + 5, int(y1 * h) + 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 128, 0), 1)
 
 
 def cmd_test_camera(args):

@@ -36,6 +36,7 @@ class Track:
     foot: tuple
     box: tuple
     prev_foot: tuple | None = None
+    hits: int = 1
     loiter_fired: bool = False
     wires_fired: set = field(default_factory=set)
 
@@ -57,6 +58,7 @@ class Tracker:
             if best and ((best.foot[0] - foot[0]) ** 2 + (best.foot[1] - foot[1]) ** 2) ** 0.5 <= self.max_dist:
                 free.remove(best)
                 best.prev_foot, best.foot, best.box, best.last_seen = best.foot, foot, box, now
+                best.hits += 1
                 seen.append(best)
             else:
                 t = Track(self._next, now, now, foot, box)

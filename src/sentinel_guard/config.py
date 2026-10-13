@@ -42,7 +42,8 @@ class DetectionConfig:
     warmup_seconds: float = 10.0
     person_filter: bool = False       # confirma pessoa com modelo leve quando há movimento
     person_confidence: float = 0.5
-    person_check_seconds: float = 1.0
+    person_check_seconds: float = 0.5
+    person_min_hits: int = 2          # detecções de pessoa seguidas para confirmar (evita falso positivo de 1 frame)
     person_model_dir: Path | None = None
 
 

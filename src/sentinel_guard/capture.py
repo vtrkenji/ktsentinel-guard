@@ -71,6 +71,8 @@ class CameraWorker(threading.Thread):
         """Tripwire e loitering: roda o detector de pessoas e rastreia, independente do MOG2."""
         cam = self.camera
         for t in tracker.update(self._person.detect_all(frame), now):
+            if t.hits < self.det_cfg.person_min_hits:
+                continue
             for i, w in enumerate(cam.tripwires):
                 if i in t.wires_fired or t.prev_foot is None:
                     continue
@@ -118,6 +120,7 @@ class CameraWorker(threading.Thread):
             self._person = self._person_detector()
         last_person_check = 0.0
         tracker = Tracker()
+        hits = 0
         last_analytics = 0.0
         interval = 1.0 / self.det_cfg.fps
         next_due = 0.0
@@ -151,6 +154,7 @@ class CameraWorker(threading.Thread):
                 if self._person is not None and now - last_person_check >= self.det_cfg.person_check_seconds:
                     last_person_check = now
                     box = self._person.detect(frame)
-                    if box is not None:
+                    hits = hits + 1 if box is not None else 0
+                    if box is not None and hits >= self.det_cfg.person_min_hits:
                         bbox, person = box, True
                 self.alerts.motion(self.camera, frame, det.last_area_pct, bbox, person)
