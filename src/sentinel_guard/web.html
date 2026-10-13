@@ -14,7 +14,7 @@ button.on{background:#E5B14D;color:#070C12;border-color:#E5B14D}
 </style></head><body>
 <header><h1>kTsentinel Guard</h1><span id="state" class="dim"></span>
 <button id="arm">Armar</button><button id="disarm">Desarmar</button><button id="refresh">Atualizar</button></header>
-<div id="login" hidden><p>Token da API:</p><input id="tok" type="password" style="width:100%"><p><button id="go">Entrar</button></p></div>
+<div id="login" hidden><p>Token da API:</p><input id="tok" type="password" style="width:100%"><p><button id="go">Entrar</button></p><p id="err" style="color:#ff6b6b"></p></div>
 <div id="grid"></div>
 <script>
 const $=id=>document.getElementById(id);
@@ -24,7 +24,8 @@ const kinds={tripwire:"Tripwire",loiter:"Loitering",motion:"Movimento"};
 async function load(){
   if(!token){$("login").hidden=false;return}
   const s=await api("/v1/status");
-  if(s.status==401){sessionStorage.removeItem("token");token="";$("login").hidden=false;return}
+  if(s.status==401||s.status==429){sessionStorage.removeItem("token");token="";$("login").hidden=false;$("err").textContent=s.status==429?"Muitas tentativas. Aguarde 5 minutos.":"Token inválido.";return}
+  $("err").textContent="";
   $("login").hidden=true;
   const st=(await s.json()).result;
   $("state").textContent=st.armed?"armado":"desarmado";
