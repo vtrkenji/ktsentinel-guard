@@ -21,6 +21,17 @@ class PersonDetector:
         self.confidence = confidence
         self._net = cv2.dnn.readNetFromCaffe(str(d / MODEL_FILES[0]), str(d / MODEL_FILES[1]))
 
+    def detect_all(self, frame: np.ndarray) -> list:
+        """Todas as pessoas acima da confiança, como (x, y, w, h) normalizados."""
+        blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5)
+        self._net.setInput(blob)
+        boxes = []
+        for det in self._net.forward()[0, 0]:
+            if int(det[1]) == PERSON_CLASS and det[2] >= self.confidence:
+                x1, y1, x2, y2 = (float(np.clip(v, 0, 1)) for v in det[3:7])
+                boxes.append((x1, y1, x2 - x1, y2 - y1))
+        return boxes
+
     def detect(self, frame: np.ndarray):
         """Devolve (x, y, w, h) normalizado da pessoa mais confiável, ou None."""
         blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5)

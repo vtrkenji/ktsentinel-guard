@@ -47,8 +47,11 @@ class AlertManager:
             "camera_id INTEGER, camera_name TEXT, start_ts TEXT NOT NULL, end_ts TEXT, "
             "peak_area_pct REAL, snapshot TEXT, peak_snapshot TEXT, "
             "notified INTEGER DEFAULT 0, reason TEXT, error TEXT, person INTEGER DEFAULT 0)")
-        if "person" not in {r[1] for r in self._db.execute("PRAGMA table_info(events)")}:
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(events)")}
+        if "person" not in cols:
             self._db.execute("ALTER TABLE events ADD COLUMN person INTEGER DEFAULT 0")
+        if "kind" not in cols:
+            self._db.execute("ALTER TABLE events ADD COLUMN kind TEXT DEFAULT 'motion'")
         self._db.commit()
 
     # --- ciclo do evento ---
@@ -80,6 +83,22 @@ class AlertManager:
                 ev["decided"] = True
                 self._decide(ev, now)
 
+    def rule_event(self, camera, frame, bbox, kind: str, label: str) -> None:
+        """Evento instantâneo de regra de análise (kind: 'tripwire' ou 'loiter'); mesmas regras de notificação."""
+        now = self._clock()
+        with self._lock:
+            ts = self._now()
+            snap = self.data_dir / "snapshots" / f"cam{camera.id}_{ts:%Y%m%d_%H%M%S}_{kind}.jpg"
+            cv2.imwrite(str(snap), _annotate(frame, bbox), [cv2.IMWRITE_JPEG_QUALITY, 85])
+            cur = self._db.execute(
+                "INSERT INTO events (camera_id, camera_name, start_ts, end_ts, snapshot, peak_snapshot, person, kind) "
+                "VALUES (?,?,?,?,?,?,1,?)",
+                (camera.id, camera.name, ts.isoformat(timespec="seconds"), ts.isoformat(timespec="seconds"),
+                 str(snap), str(snap), kind))
+            self._db.commit()
+            self._decide({"id": cur.lastrowid, "camera": camera, "person": True, "start_ts": ts,
+                          "kind": kind, "label": label}, now)
+
     def tick(self) -> None:
         """Fecha eventos sem movimento há event_gap_seconds."""
         now = self._clock()
@@ -110,7 +129,8 @@ class AlertManager:
     def _decide(self, ev: dict, now: float) -> None:
         cam = ev["camera"]
         reason = None
-        last = self._last_notified.get(cam.id)
+        key = (cam.id, ev.get("kind", "motion"))
+        last = self._last_notified.get(key)
         self._sent_times = [t for t in self._sent_times if now - t < 3600]
         if not self.rules.notify:
             reason = "somente_registro"
@@ -122,9 +142,9 @@ class AlertManager:
             self._db.execute("UPDATE events SET reason=? WHERE id=?", (reason, ev["id"]))
             self._db.commit()
             return
-        self._last_notified[cam.id] = now
+        self._last_notified[key] = now
         self._sent_times.append(now)
-        what = "Pessoa detectada" if ev["person"] else "Movimento detectado"
+        what = ev.get("label") or ("Pessoa detectada" if ev["person"] else "Movimento detectado")
         body = f"{what}: {cam.name} às {ev['start_ts']:%H:%M:%S}"
         threading.Thread(target=self._notify, args=(ev["id"], cam.name, body), daemon=True).start()
 
@@ -145,7 +165,7 @@ class AlertManager:
     # --- consulta ---
     def list_events(self, limit: int = 50, since: str | None = None) -> list[dict]:
         q = ("SELECT id, camera_id, camera_name, start_ts, end_ts, peak_area_pct, snapshot, "
-             "peak_snapshot, notified, reason, error, person FROM events")
+             "peak_snapshot, notified, reason, error, person, kind FROM events")
         args: list = []
         if since:
             q += " WHERE start_ts >= ?"
@@ -155,7 +175,7 @@ class AlertManager:
         with self._lock:
             rows = self._db.execute(q, args).fetchall()
         keys = ("id", "cameraId", "cameraName", "start", "end", "peakAreaPct", "snapshot",
-                "peakSnapshot", "notified", "reason", "error", "person")
+                "peakSnapshot", "notified", "reason", "error", "person", "kind")
         out = []
         for r in rows:
             e = dict(zip(keys, r))

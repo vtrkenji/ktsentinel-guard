@@ -61,3 +61,10 @@ Gere o token com `sentinel-guard gen-token` (grava `~/.config/ktsentinel-guard/a
 Com `[detection] person_filter = true`, quando o MOG2 detecta movimento o modelo roda no máx. 1x/s e marca o
 evento (`person` no histórico, bbox da pessoa no snapshot). Com `[general] require_person = true` só pessoas
 notificam; movimento sem pessoa fica no histórico com `reason = "sem_pessoa"`.
+
+## Tripwire e loitering
+
+Por câmera, com `person_filter` ligado (veja `packaging/config.example.toml`). Roda o detector de pessoas
+~2x/s, rastreia cada pessoa (pé = base da caixa) e gera eventos `kind = tripwire` (cruzou a linha, na direção
+configurada) ou `kind = loiter` (ficou `loiter_seconds` na cena/zona). Cada tipo tem cooldown próprio e conta
+no limite de notificações por hora.

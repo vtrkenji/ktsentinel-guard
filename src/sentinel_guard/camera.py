@@ -20,6 +20,14 @@ class Camera:
     min_consecutive_frames: int | None = None
     ignore_zones: list = field(default_factory=list)   # polígonos [[x,y],...] normalizados 0..1
     include_zones: list = field(default_factory=list)  # se houver, só estas áreas contam
+    # [{"name","line":[[x,y],[x,y]],"direction":"both|ab|ba"}]; "ab" = da esquerda para a direita de a→b
+    tripwires: list = field(default_factory=list)
+    loiter_seconds: float | None = None     # pessoa permanecendo na cena (ou em loiter_zone) por este tempo
+    loiter_zone: list = field(default_factory=list)
+
+    @property
+    def analytics(self) -> bool:
+        return bool(self.tripwires) or self.loiter_seconds is not None
 
     @property
     def detection_url(self) -> str:
@@ -35,4 +43,7 @@ class Camera:
             "isActive": self.is_active,
             "ignoreZones": self.ignore_zones,
             "includeZones": self.include_zones,
+            "tripwires": self.tripwires,
+            "loiterSeconds": self.loiter_seconds,
+            "loiterZone": self.loiter_zone,
         }

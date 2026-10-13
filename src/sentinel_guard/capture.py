@@ -8,6 +8,7 @@ import cv2
 from .camera import Camera, redact_url
 from .config import DetectionConfig
 from .detector import MotionDetector
+from .tracker import Tracker, crossing, point_in_polygon
 
 # TCP e timeout de 5s; precisa estar no ambiente antes do primeiro VideoCapture
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;5000000")
@@ -66,6 +67,22 @@ class CameraWorker(threading.Thread):
             log.error("[%s] falha ao carregar modelo de pessoa (%s); filtro desativado", self.camera.name, e)
             return None
 
+    def _analyze(self, frame, now: float, tracker: Tracker) -> None:
+        """Tripwire e loitering: roda o detector de pessoas e rastreia, independente do MOG2."""
+        cam = self.camera
+        for t in tracker.update(self._person.detect_all(frame), now):
+            for i, w in enumerate(cam.tripwires):
+                if i in t.wires_fired or t.prev_foot is None:
+                    continue
+                d = crossing(w["line"][0], w["line"][1], t.prev_foot, t.foot)
+                if d and w["direction"] in ("both", d):
+                    t.wires_fired.add(i)
+                    self.alerts.rule_event(cam, frame, t.box, "tripwire", f"Pessoa cruzou {w['name']}")
+            in_zone = not cam.loiter_zone or point_in_polygon(t.foot, cam.loiter_zone)
+            if cam.loiter_seconds and in_zone and not t.loiter_fired and now - t.first_seen >= cam.loiter_seconds:
+                t.loiter_fired = True
+                self.alerts.rule_event(cam, frame, t.box, "loiter", "Pessoa parada/rondando")
+
     def run(self) -> None:
         backoff = 1.0
         while not self._stop_evt.is_set():
@@ -100,6 +117,8 @@ class CameraWorker(threading.Thread):
         if self._person is None and self.det_cfg.person_filter:
             self._person = self._person_detector()
         last_person_check = 0.0
+        tracker = Tracker()
+        last_analytics = 0.0
         interval = 1.0 / self.det_cfg.fps
         next_due = 0.0
         was_armed = False
@@ -123,6 +142,9 @@ class CameraWorker(threading.Thread):
             next_due = now + interval
             if not ok:
                 return
+            if self._person is not None and self.camera.analytics and now - last_analytics >= 0.5:
+                last_analytics = now
+                self._analyze(frame, now, tracker)
             if det.process(frame):
                 self.motion_events += 1
                 bbox, person = det.last_bbox, False

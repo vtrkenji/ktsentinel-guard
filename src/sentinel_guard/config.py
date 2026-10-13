@@ -111,6 +111,19 @@ def _zones(c: dict, key: str) -> list:
     return zones
 
 
+def _tripwires(c: dict) -> list:
+    out = []
+    for w in c.get("tripwires", []):
+        line = w.get("line", [])
+        if len(line) != 2 or any(len(p) != 2 or not all(0 <= v <= 1 for v in p) for p in line):
+            raise ConfigError(f"tripwire da câmera {c.get('id')}: 'line' precisa de 2 pontos [x,y] entre 0 e 1")
+        d = w.get("direction", "both")
+        if d not in ("both", "ab", "ba"):
+            raise ConfigError(f"tripwire da câmera {c.get('id')}: direction deve ser both, ab ou ba")
+        out.append({"name": w.get("name", "linha"), "line": line, "direction": d})
+    return out
+
+
 def load_config(path: Path, require_private: bool = True) -> Config:
     path = Path(path)
     if not path.exists():
@@ -193,5 +206,10 @@ def load_config(path: Path, require_private: bool = True) -> Config:
             min_consecutive_frames=c.get("min_consecutive_frames"),
             ignore_zones=_zones(c, "ignore_zones"),
             include_zones=_zones(c, "include_zones"),
+            tripwires=_tripwires(c),
+            loiter_seconds=float(c["loiter_seconds"]) if c.get("loiter_seconds") else None,
+            loiter_zone=(_zones({"id": c["id"], "z": [c["loiter_zone"]]}, "z")[0] if c.get("loiter_zone") else []),
         ))
+    if any(c.analytics for c in cfg.cameras) and not cfg.detection.person_filter:
+        raise ConfigError("tripwire/loiter_seconds exigem [detection].person_filter = true")
     return cfg
