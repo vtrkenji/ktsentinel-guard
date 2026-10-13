@@ -68,3 +68,13 @@ Por câmera, com `person_filter` ligado (veja `packaging/config.example.toml`). 
 ~2x/s, rastreia cada pessoa (pé = base da caixa) e gera eventos `kind = tripwire` (cruzou a linha, na direção
 configurada) ou `kind = loiter` (ficou `loiter_seconds` na cena/zona). Cada tipo tem cooldown próprio e conta
 no limite de notificações por hora.
+
+## Ver snapshots e histórico pelo navegador
+
+Com `[api]` habilitado, abra `http://<ip-do-notebook>:8765/` e informe o token (`~/.config/ktsentinel-guard/api-token`).
+A página lista os eventos com o snapshot de pico (nomeado por data/hora), mostra a janela para achar no DVR e
+tem botões de armar/desarmar. O token fica só na sessão do navegador.
+
+Para acessar de fora de casa sem expor nada na internet: instale o Tailscale no notebook (`sudo tailscale up`)
+e no celular, e troque `bind` para o IP Tailscale do notebook (`tailscale ip -4`) ou `0.0.0.0` com firewall.
+As fotos continuam só no notebook; nada é enviado a serviços de nuvem.

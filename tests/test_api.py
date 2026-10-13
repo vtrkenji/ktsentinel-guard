@@ -89,3 +89,18 @@ def test_snapshot_path_rejects_outside_dir(tmp_path):
                    (str(outside),))
     am._db.commit()
     assert am.snapshot_path(1) is None
+
+
+def test_web_page_is_public(tmp_path):
+    tf = tmp_path / "token"
+    tf.write_text(TOKEN)
+    tf.chmod(0o600)
+    am = AlertManager(tmp_path / "d", Rules(notify=False), [])
+    api = ApiServer(ApiConfig(enabled=True, port=0, token_file=tf), FakeDaemon(am))
+    api.start()
+    try:
+        code, ctype, body = call(f"http://127.0.0.1:{api.address[1]}", "/", token=None)
+        assert code == 200 and ctype.startswith("text/html") and b"kTsentinel Guard" in body
+        assert TOKEN.encode() not in body
+    finally:
+        api.close()

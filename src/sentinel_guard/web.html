@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>kTsentinel Guard</title>
+<style>
+body{margin:0;background:#070C12;color:#eee;font-family:system-ui,sans-serif}
+header{display:flex;gap:8px;align-items:center;padding:12px 16px;background:#0d1520;position:sticky;top:0}
+h1{font-size:18px;margin:0;color:#F5B62E;flex:1}
+button,input{background:#1a2535;color:#eee;border:1px solid #2a3a50;border-radius:6px;padding:8px 12px}
+button.on{background:#E5B14D;color:#070C12;border-color:#E5B14D}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px}
+.card{background:#0d1520;border-radius:8px;overflow:hidden}.card img{width:100%;display:block;cursor:pointer}
+.meta{padding:8px 10px;font-size:13px}.tag{color:#E5B14D}.dim{color:#8a99ad}
+#login{padding:24px;max-width:420px;margin:auto}
+</style></head><body>
+<header><h1>kTsentinel Guard</h1><span id="state" class="dim"></span>
+<button id="arm">Armar</button><button id="disarm">Desarmar</button><button id="refresh">Atualizar</button></header>
+<div id="login" hidden><p>Token da API:</p><input id="tok" type="password" style="width:100%"><p><button id="go">Entrar</button></p></div>
+<div id="grid"></div>
+<script>
+const $=id=>document.getElementById(id);
+let token=sessionStorage.getItem("token")||"";
+const api=(p,o={})=>fetch(p,{...o,headers:{Authorization:"Bearer "+token}});
+const kinds={tripwire:"Tripwire",loiter:"Loitering",motion:"Movimento"};
+async function load(){
+  if(!token){$("login").hidden=false;return}
+  const s=await api("/v1/status");
+  if(s.status==401){sessionStorage.removeItem("token");token="";$("login").hidden=false;return}
+  $("login").hidden=true;
+  const st=(await s.json()).result;
+  $("state").textContent=st.armed?"armado":"desarmado";
+  const ev=(await (await api("/v1/events?limit=60")).json()).result;
+  const g=$("grid");g.innerHTML="";
+  for(const e of ev){
+    const c=document.createElement("div");c.className="card";
+    const img=document.createElement("img");img.loading="lazy";
+    api("/v1/snapshot?id="+e.id).then(r=>r.ok?r.blob():null).then(b=>{if(b)img.src=URL.createObjectURL(b)});
+    img.onclick=()=>img.requestFullscreen&&img.requestFullscreen();
+    const m=document.createElement("div");m.className="meta";
+    const w=e.dvrWindow?`<br><span class="dim">DVR: ${e.dvrWindow.start||e.dvrWindow[0]||""} – ${e.dvrWindow.end||e.dvrWindow[1]||""}</span>`:"";
+    m.innerHTML=`<b>${e.cameraName}</b> <span class="tag">${e.person?"pessoa · ":""}${kinds[e.kind]||e.kind}</span><br>${e.start.replace("T"," ").slice(0,19)}<br><span class="dim">${e.notified?"notificado":(e.reason||"")}</span>${w}`;
+    c.append(img,m);g.append(c);
+  }
+}
+$("go").onclick=()=>{token=$("tok").value.trim();sessionStorage.setItem("token",token);load()};
+$("refresh").onclick=load;
+$("arm").onclick=async()=>{await api("/v1/arm",{method:"POST"});load()};
+$("disarm").onclick=async()=>{if(confirm("Desarmar o Guard?")){await api("/v1/disarm",{method:"POST"});load()}};
+load();
+</script></body></html>

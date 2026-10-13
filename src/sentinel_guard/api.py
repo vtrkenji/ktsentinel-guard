@@ -1,5 +1,6 @@
 """API HTTP (JSON) para controle remoto. Desligada por padrão; autenticação por token Bearer.
 
+GET  /                     página web (histórico + arm/disarm; pede o token)
 GET  /v1/status            GET  /v1/cameras
 POST /v1/arm               POST /v1/disarm
 GET  /v1/events?limit=&since=
@@ -9,10 +10,12 @@ import hmac
 import json
 import logging
 import threading
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 log = logging.getLogger("sentinel_guard.api")
+WEB_PAGE = Path(__file__).with_name("web.html")
 
 ROUTES = {
     ("GET", "/v1/status"): "status",
@@ -45,6 +48,8 @@ def make_handler(daemon, token: str):
             return got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), token)
 
         def _route(self, method):
+            if method == "GET" and urlparse(self.path).path in ("/", "/index.html"):
+                return self._send(200, WEB_PAGE.read_bytes(), "text/html; charset=utf-8")  # sem dados; o token vai no JS
             if not self._authorized():
                 return self._json(401, {"ok": False, "error": "não autorizado"})
             url = urlparse(self.path)
