@@ -33,7 +33,7 @@ class FakeDaemon:
     def cmd_list_cameras(self):
         return []
 
-    def cmd_list_events(self, limit=50, since=None):
+    def cmd_list_events(self, limit=50, since=None, only_notified=False):
         return self.alerts.list_events(limit, since)
 
 

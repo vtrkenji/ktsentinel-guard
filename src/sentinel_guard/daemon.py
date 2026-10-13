@@ -207,8 +207,8 @@ class Daemon:
     def cmd_list_cameras(self):
         return [c.to_json() for c in self.cfg.cameras]
 
-    def cmd_list_events(self, limit=50, since=None):
-        return self.alerts.list_events(int(limit), since)
+    def cmd_list_events(self, limit=50, since=None, only_notified=False):
+        return self.alerts.list_events(int(limit), since, bool(only_notified))
 
     cmd_list_alerts = cmd_list_events
 

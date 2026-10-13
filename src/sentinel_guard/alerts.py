@@ -79,6 +79,7 @@ class AlertManager:
                 ev.update(peak=area_pct, peak_frame=frame, peak_bbox=bbox)
             ev["peak"] = max(ev["peak"], area_pct)
             if (not ev["decided"] and now - ev["start"] >= self.rules.min_event_seconds
+                    and not self.rules.behavior_only
                     and (ev["person"] or not self.rules.require_person)):
                 ev["decided"] = True
                 self._decide(ev, now)
@@ -152,7 +153,11 @@ class AlertManager:
         if not ev["decided"]:
             long_enough = ev["last"] - ev["start"] >= self.rules.min_event_seconds
             sets += ", reason=?"
-            vals.append("sem_pessoa" if self.rules.require_person and not ev["person"] and long_enough else "curto")
+            if self.rules.behavior_only and ev["person"] and long_enough:
+                reason = "so_registro"
+            else:
+                reason = "sem_pessoa" if self.rules.require_person and not ev["person"] and long_enough else "curto"
+            vals.append(reason)
         self._db.execute(f"UPDATE events SET {sets} WHERE id=?", (*vals, ev["id"]))
         self._db.commit()
 
@@ -194,13 +199,18 @@ class AlertManager:
             self._db.commit()
 
     # --- consulta ---
-    def list_events(self, limit: int = 50, since: str | None = None) -> list[dict]:
+    def list_events(self, limit: int = 50, since: str | None = None, only_notified: bool = False) -> list[dict]:
         q = ("SELECT id, camera_id, camera_name, start_ts, end_ts, peak_area_pct, snapshot, "
              "peak_snapshot, notified, reason, error, person, kind FROM events")
         args: list = []
+        conds = []
         if since:
-            q += " WHERE start_ts >= ?"
+            conds.append("start_ts >= ?")
             args.append(since)
+        if only_notified:
+            conds.append("notified = 1")
+        if conds:
+            q += " WHERE " + " AND ".join(conds)
         q += " ORDER BY id DESC LIMIT ?"
         args.append(limit)
         with self._lock:

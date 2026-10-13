@@ -131,3 +131,25 @@ def test_prune_remove_antigos_e_respeita_teto(tmp_path):
     (snaps / "big.jpg").write_bytes(b"x" * 2 * 1024 * 1024)
     am.prune()
     assert not (snaps / "big.jpg").exists() or not new.exists()
+
+
+def test_behavior_only_registra_movimento_com_pessoa(tmp_path):
+    am, t, sent = make(tmp_path, behavior_only=True)
+    for s in range(0, 6):
+        t[0] = s
+        am.motion(CAM, FRAME, 3.0, (0.1, 0.1, 0.2, 0.2), True)
+    t[0] = 20
+    am.tick()
+    wait_threads()
+    assert sent == []
+    e = am.list_events()[0]
+    assert e["reason"] == "so_registro" and not e["notified"]
+    assert am.list_events(only_notified=True) == []
+
+
+def test_behavior_only_ainda_notifica_loiter(tmp_path):
+    am, t, sent = make(tmp_path, behavior_only=True)
+    am.rule_event(CAM, FRAME, (0.1, 0.1, 0.2, 0.2), "loiter", "Pessoa parada")
+    wait_threads()
+    assert len(sent) == 1
+    assert len(am.list_events(only_notified=True)) == 1
