@@ -83,6 +83,49 @@ def parse_window(w: dict) -> ScheduleWindow:
     return ScheduleWindow(days, time(h1, m1), time(h2, m2))
 
 
+# Ajustes editáveis pelo app: (seção, atributo, tipo, mínimo, máximo)
+SETTINGS = {
+    "sensitivity": ("detection", "sensitivity", int, 1, 10),
+    "personMinHits": ("detection", "person_min_hits", int, 1, 5),
+    "cooldownSeconds": ("rules", "cooldown_seconds", float, 10, 600),
+    "maxNotificationsPerHour": ("rules", "max_notifications_per_hour", int, 1, 60),
+    "keepDays": ("rules", "keep_days", int, 1, 90),
+    "maxSnapshotsMb": ("rules", "max_snapshots_mb", int, 50, 5000),
+    "notify": ("rules", "notify", bool, None, None),
+    "requirePerson": ("rules", "require_person", bool, None, None),
+}
+
+
+def validate_settings(values: dict) -> dict:
+    out = {}
+    for k, v in values.items():
+        if k not in SETTINGS:
+            raise ValueError(f"ajuste desconhecido: {k}")
+        _, _, typ, lo, hi = SETTINGS[k]
+        if typ is bool:
+            if not isinstance(v, bool):
+                raise ValueError(f"{k} deve ser true/false")
+            out[k] = v
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(f"{k} deve ser numérico")
+        if not lo <= v <= hi:
+            raise ValueError(f"{k} deve estar entre {lo} e {hi}")
+        out[k] = typ(v)
+    return out
+
+
+def apply_settings(cfg, values: dict) -> None:
+    for k, v in values.items():
+        sec, attr, *_ = SETTINGS[k]
+        setattr(getattr(cfg, "detection" if sec == "detection" else "rules"), attr, v)
+
+
+def current_settings(cfg) -> dict:
+    return {k: getattr(getattr(cfg, "detection" if sec == "detection" else "rules"), attr)
+            for k, (sec, attr, *_) in SETTINGS.items()}
+
+
 @dataclass
 class ApiConfig:
     enabled: bool = False

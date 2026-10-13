@@ -41,3 +41,14 @@ def test_desativar_mantem_janelas_e_arma_sempre(tmp_path):
 def test_janela_invalida(tmp_path, w):
     with pytest.raises(ValueError):
         make(tmp_path).cmd_set_schedule([w])
+
+
+def test_settings_validacao_e_persistencia(tmp_path):
+    d = make(tmp_path)
+    d.cfg.data_dir = tmp_path
+    res = d.cmd_set_settings({"cooldownSeconds": 120, "keepDays": 7, "notify": False})
+    assert res["cooldownSeconds"] == 120 and res["keepDays"] == 7 and res["notify"] is False
+    assert d.cfg.rules.cooldown_seconds == 120
+    for bad in ({"sensitivity": 11}, {"foo": 1}, {"notify": 1}, {"keepDays": True}):
+        with pytest.raises(ValueError):
+            d.cmd_set_settings(bad)

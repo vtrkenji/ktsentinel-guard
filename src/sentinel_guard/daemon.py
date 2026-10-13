@@ -5,7 +5,7 @@ from datetime import datetime
 import threading
 
 from .alerts import AlertManager
-from .config import parse_window
+from .config import apply_settings, current_settings, parse_window, validate_settings
 from .capture import CameraWorker
 from .config import Config, load_config
 from .fcm import FcmSender, NtfySender, with_retries
@@ -33,6 +33,9 @@ class Daemon:
             return False
         sched = self.schedule
         return not sched or any(w.active(datetime.now()) for w in sched)
+
+    def _settings_file(self):
+        return self.cfg.data_dir / "settings.json"
 
     def _schedule_file(self):
         return self.cfg.data_dir / "schedule.json"
@@ -78,6 +81,12 @@ class Daemon:
         with self._lock:
             self.cfg = load_config(self.config_path)
             self.cfg.data_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                apply_settings(self.cfg, validate_settings(json.loads(self._settings_file().read_text())))
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                log.error("settings.json ignorado: %s", e)
             self.armed = self._load_armed()
             self.schedule = self._load_schedule()
             self._notifier_list = self._notifiers()
@@ -157,6 +166,33 @@ class Daemon:
             self.schedule_enabled = bool(enabled)
             self.schedule = parsed if enabled else []
         return self.cmd_get_schedule()
+
+    def cmd_get_settings(self):
+        with self._lock:
+            return current_settings(self.cfg)
+
+    def cmd_set_settings(self, values):
+        """Salva ajustes do app em settings.json (sobrepõem o config.toml)."""
+        if not isinstance(values, dict):
+            raise ValueError("values deve ser um objeto")
+        new = validate_settings(values)
+        with self._lock:
+            before = current_settings(self.cfg)
+            try:
+                saved = json.loads(self._settings_file().read_text())
+            except Exception:
+                saved = {}
+            saved.update(new)
+            self._settings_file().write_text(json.dumps(saved))
+            apply_settings(self.cfg, new)
+            # Rules é compartilhado com o AlertManager; só detecção exige reiniciar as câmeras.
+            if self.alerts:
+                self.alerts.rules = self.cfg.rules
+            changed_detection = any(before[k] != current_settings(self.cfg)[k]
+                                    for k in new if k in ("sensitivity", "personMinHits"))
+        if changed_detection:
+            self.cmd_reload_config()
+        return self.cmd_get_settings()
 
     def cmd_arm(self):
         self.armed = True
