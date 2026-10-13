@@ -5,6 +5,7 @@ from datetime import datetime
 import threading
 
 from .alerts import AlertManager
+from .config import parse_window
 from .capture import CameraWorker
 from .config import Config, load_config
 from .fcm import FcmSender, NtfySender, with_retries
@@ -21,6 +22,8 @@ class Daemon:
         self.workers: list[CameraWorker] = []
         self.alerts: AlertManager | None = None
         self.armed = True
+        self.schedule = []
+        self.schedule_enabled = True
         self._lock = threading.RLock()
         self._stop = threading.Event()
 
@@ -28,8 +31,23 @@ class Daemon:
         """Armado manualmente e, se houver agenda, dentro de uma janela."""
         if not self.armed:
             return False
-        sched = self.cfg.schedule
+        sched = self.schedule
         return not sched or any(w.active(datetime.now()) for w in sched)
+
+    def _schedule_file(self):
+        return self.cfg.data_dir / "schedule.json"
+
+    def _load_schedule(self):
+        """Agenda salva pelo app (schedule.json) tem prioridade sobre [[schedule]] do config."""
+        try:
+            data = json.loads(self._schedule_file().read_text())
+        except Exception:
+            self.schedule_enabled = True
+            return list(self.cfg.schedule)
+        self.schedule_enabled = bool(data.get("enabled", True))
+        wins = [parse_window(w) for w in data.get("windows", [])]
+        return wins if self.schedule_enabled else []
+
 
     # --- ciclo de vida ---
     def _state_file(self):
@@ -61,6 +79,7 @@ class Daemon:
             self.cfg = load_config(self.config_path)
             self.cfg.data_dir.mkdir(parents=True, exist_ok=True)
             self.armed = self._load_armed()
+            self.schedule = self._load_schedule()
             self._notifier_list = self._notifiers()
             self.alerts = AlertManager(self.cfg.data_dir, self.cfg.rules, self._notifier_list)
             self.workers = [
@@ -112,6 +131,32 @@ class Daemon:
             return {"armed": self.armed, "scheduleActive": self.is_armed(),
                     "notify": self.cfg.rules.notify, "cameras": [w.status() for w in self.workers],
                     "fcmConfigured": self.cfg.fcm.enabled, "ntfyConfigured": self.cfg.ntfy.enabled}
+
+    def cmd_get_schedule(self):
+        with self._lock:
+            if self.schedule_enabled:
+                wins = self.schedule
+            else:
+                try:
+                    wins = [parse_window(w) for w in json.loads(self._schedule_file().read_text())["windows"]]
+                except Exception:
+                    wins = []
+            return {"enabled": self.schedule_enabled and bool(self.schedule),
+                    "windows": [{"days": list(w.days), "start": w.start.strftime("%H:%M"),
+                                 "end": w.end.strftime("%H:%M")} for w in wins]}
+
+    def cmd_set_schedule(self, windows, enabled=True):
+        """windows: [{"days":[0..6],"start":"HH:MM","end":"HH:MM"}]; 0=segunda."""
+        if not isinstance(windows, list) or len(windows) > 20:
+            raise ValueError("windows deve ser uma lista com até 20 itens")
+        parsed = [parse_window(w) for w in windows]
+        with self._lock:
+            data = [{"days": list(w.days), "start": w.start.strftime("%H:%M"), "end": w.end.strftime("%H:%M")}
+                    for w in parsed]
+            self._schedule_file().write_text(json.dumps({"enabled": bool(enabled), "windows": data}))
+            self.schedule_enabled = bool(enabled)
+            self.schedule = parsed if enabled else []
+        return self.cmd_get_schedule()
 
     def cmd_arm(self):
         self.armed = True

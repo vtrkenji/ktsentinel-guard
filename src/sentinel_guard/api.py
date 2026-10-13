@@ -3,6 +3,7 @@
 GET  /                     página web (histórico + arm/disarm; pede o token)
 GET  /v1/status            GET  /v1/cameras
 POST /v1/arm               POST /v1/disarm
+GET/PUT /v1/schedule        agenda: {"enabled":true,"windows":[{"days":[0,1],"start":"11:30","end":"05:00"}]}
 GET  /v1/events?limit=&since=
 GET  /v1/snapshot?id=N&kind=peak|start   (JPEG)
 """
@@ -86,6 +87,14 @@ def make_handler(daemon, token: str, trusted_proxies=frozenset({"127.0.0.1"})):
                     if path is None:
                         return self._json(404, {"ok": False, "error": "snapshot não encontrado"})
                     return self._send(200, path.read_bytes(), "image/jpeg")
+                elif method == "GET" and url.path == "/v1/schedule":
+                    res = daemon.cmd_get_schedule()
+                elif method == "PUT" and url.path == "/v1/schedule":
+                    n = int(self.headers.get("Content-Length") or 0)
+                    if n > 65536:
+                        return self._json(413, {"ok": False, "error": "corpo grande demais"})
+                    body = json.loads(self.rfile.read(n) or b"{}")
+                    res = daemon.cmd_set_schedule(body["windows"], body.get("enabled", True))
                 elif (method, url.path) in ROUTES:
                     res = getattr(daemon, f"cmd_{ROUTES[(method, url.path)]}")()
                 else:
@@ -99,6 +108,9 @@ def make_handler(daemon, token: str, trusted_proxies=frozenset({"127.0.0.1"})):
 
         def do_GET(self):
             self._route("GET")
+
+        def do_PUT(self):
+            self._route("PUT")
 
         def do_POST(self):
             self._route("POST")

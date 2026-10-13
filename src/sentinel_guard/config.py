@@ -74,6 +74,15 @@ class ScheduleWindow:
         return (d - 1) % 7 in self.days and t < self.end
 
 
+def parse_window(w: dict) -> ScheduleWindow:
+    h1, m1 = map(int, str(w["start"]).split(":"))
+    h2, m2 = map(int, str(w["end"]).split(":"))
+    days = tuple(sorted({int(d) for d in w.get("days", range(7))}))
+    if not days or not all(0 <= d <= 6 for d in days):
+        raise ValueError("dias devem estar entre 0 (segunda) e 6 (domingo)")
+    return ScheduleWindow(days, time(h1, m1), time(h2, m2))
+
+
 @dataclass
 class ApiConfig:
     enabled: bool = False
@@ -154,12 +163,7 @@ def load_config(path: Path, require_private: bool = True) -> Config:
         token_file=_expand(a["token_file"]) if a.get("token_file") else _expand("~/.config/ktsentinel-guard/api-token"))
     for w in raw.get("schedule", []):
         try:
-            h1, m1 = map(int, w["start"].split(":"))
-            h2, m2 = map(int, w["end"].split(":"))
-            days = tuple(w.get("days", range(7)))
-            if not all(0 <= d <= 6 for d in days):
-                raise ValueError("dias devem estar entre 0 (segunda) e 6 (domingo)")
-            cfg.schedule.append(ScheduleWindow(days, time(h1, m1), time(h2, m2)))
+            cfg.schedule.append(parse_window(w))
         except (KeyError, ValueError) as e:
             raise ConfigError(f"[[schedule]] inválido: {e}") from e
 
