@@ -47,7 +47,8 @@ class CameraWorker(threading.Thread):
             sensitivity=c.sensitivity or d.sensitivity,
             min_area_pct=c.min_area_pct if c.min_area_pct is not None else d.min_area_pct,
             min_consecutive_frames=c.min_consecutive_frames or d.min_consecutive_frames,
-            history=d.history, warmup_frames=int(d.warmup_seconds * d.fps))
+            history=d.history, warmup_frames=int(d.warmup_seconds * d.fps),
+            ignore_zones=c.ignore_zones, include_zones=c.include_zones)
 
     def run(self) -> None:
         backoff = 1.0
@@ -90,6 +91,7 @@ class CameraWorker(threading.Thread):
             self.last_frame_at = now
             if now < next_due:
                 continue
+            self.alerts.tick()
             armed = self.is_armed()
             if not armed:
                 was_armed = False
@@ -104,4 +106,4 @@ class CameraWorker(threading.Thread):
                 return
             if det.process(frame):
                 self.motion_events += 1
-                self.alerts.trigger(self.camera, frame)
+                self.alerts.motion(self.camera, frame, det.last_area_pct, det.last_bbox)

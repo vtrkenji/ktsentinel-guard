@@ -2,58 +2,126 @@ import logging
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import cv2
 
+from .config import Rules
+
 log = logging.getLogger("sentinel_guard.alerts")
+
+DVR_PADDING = timedelta(seconds=15)
+
+
+def _annotate(frame, bbox):
+    img = frame.copy()
+    if bbox:
+        h, w = img.shape[:2]
+        x, y, bw, bh = bbox
+        cv2.rectangle(img, (int(x * w), int(y * h)), (int((x + bw) * w), int((y + bh) * h)), (0, 180, 255), 2)
+    return img
 
 
 class AlertManager:
-    """Cooldown por câmera, snapshot, histórico SQLite e envio assíncrono."""
+    """Segmenta movimento em eventos, aplica regras de notificação e guarda histórico.
 
-    def __init__(self, data_dir: Path, cooldown: float, notifiers, clock=time.monotonic):
+    Cada evento guarda início/fim no relógio local (mesmo relógio exibido pelo DVR) para
+    localizar o trecho na gravação do DVR.
+    """
+
+    def __init__(self, data_dir: Path, rules: Rules, notifiers, clock=time.monotonic, now=None):
         self.data_dir = Path(data_dir)
         (self.data_dir / "snapshots").mkdir(parents=True, exist_ok=True)
-        self.cooldown = cooldown
+        self.rules = rules
         self.notifiers = notifiers  # callables (camera_name, body) -> None
         self._clock = clock
-        self._last: dict[int, float] = {}
+        self._now = now or (lambda: datetime.now().astimezone())
+        self._open: dict[int, dict] = {}
+        self._last_notified: dict[int, float] = {}
+        self._sent_times: list[float] = []
         self._lock = threading.Lock()
         self._db = sqlite3.connect(self.data_dir / "events.db", check_same_thread=False)
         self._db.execute(
-            "CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "ts TEXT NOT NULL, camera_id INTEGER, camera_name TEXT, snapshot TEXT, "
-            "notified INTEGER DEFAULT 0, error TEXT)")
+            "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "camera_id INTEGER, camera_name TEXT, start_ts TEXT NOT NULL, end_ts TEXT, "
+            "peak_area_pct REAL, snapshot TEXT, peak_snapshot TEXT, "
+            "notified INTEGER DEFAULT 0, reason TEXT, error TEXT)")
         self._db.commit()
 
-    def trigger(self, camera, frame, wait: bool = False) -> int | None:
-        """Registra alerta se fora do cooldown. Retorna id do alerta ou None."""
+    # --- ciclo do evento ---
+    def motion(self, camera, frame, area_pct: float, bbox) -> None:
+        """Chamado a cada frame com movimento sustentado."""
         now = self._clock()
         with self._lock:
-            last = self._last.get(camera.id)
-            if last is not None and now - last < self.cooldown:
-                return None
-            self._last[camera.id] = now
-            ts = datetime.now().astimezone()
-            snap = self.data_dir / "snapshots" / f"cam{camera.id}_{ts:%Y%m%d_%H%M%S}.jpg"
-            cv2.imwrite(str(snap), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            cur = self._db.execute(
-                "INSERT INTO alerts (ts, camera_id, camera_name, snapshot) VALUES (?,?,?,?)",
-                (ts.isoformat(timespec="seconds"), camera.id, camera.name, str(snap)))
-            self._db.commit()
-            alert_id = cur.lastrowid
-        t = threading.Thread(target=self._notify, args=(alert_id, camera.name), daemon=True)
-        t.start()
-        if wait:
-            t.join()
-        return alert_id
+            ev = self._open.get(camera.id)
+            if ev is None:
+                ts = self._now()
+                snap = self.data_dir / "snapshots" / f"cam{camera.id}_{ts:%Y%m%d_%H%M%S}.jpg"
+                cv2.imwrite(str(snap), _annotate(frame, bbox), [cv2.IMWRITE_JPEG_QUALITY, 85])
+                cur = self._db.execute(
+                    "INSERT INTO events (camera_id, camera_name, start_ts, snapshot, peak_area_pct) "
+                    "VALUES (?,?,?,?,?)",
+                    (camera.id, camera.name, ts.isoformat(timespec="seconds"), str(snap), area_pct))
+                self._db.commit()
+                ev = self._open[camera.id] = {
+                    "id": cur.lastrowid, "start": now, "last": now, "peak": area_pct, "decided": False,
+                    "peak_frame": frame, "peak_bbox": bbox, "camera": camera, "start_ts": ts}
+            ev["last"] = now
+            if area_pct > ev["peak"]:
+                ev.update(peak=area_pct, peak_frame=frame, peak_bbox=bbox)
+            if not ev["decided"] and now - ev["start"] >= self.rules.min_event_seconds:
+                ev["decided"] = True
+                self._decide(ev, now)
 
-    def _notify(self, alert_id: int, name: str) -> None:
-        body = f"Movimento detectado: {name}"
-        errors = []
-        ok = 0
+    def tick(self) -> None:
+        """Fecha eventos sem movimento há event_gap_seconds."""
+        now = self._clock()
+        with self._lock:
+            for cid in [c for c, e in self._open.items() if now - e["last"] >= self.rules.event_gap_seconds]:
+                self._close(cid)
+
+    def close_all(self) -> None:
+        with self._lock:
+            for cid in list(self._open):
+                self._close(cid)
+
+    def _close(self, cid: int) -> None:
+        ev = self._open.pop(cid)
+        end_ts = ev["start_ts"] + timedelta(seconds=max(0.0, ev["last"] - ev["start"]))
+        peak_snap = self.data_dir / "snapshots" / f"cam{cid}_{ev['start_ts']:%Y%m%d_%H%M%S}_peak.jpg"
+        cv2.imwrite(str(peak_snap), _annotate(ev["peak_frame"], ev["peak_bbox"]), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        sets = "end_ts=?, peak_area_pct=?, peak_snapshot=?"
+        vals = [end_ts.isoformat(timespec="seconds"), ev["peak"], str(peak_snap)]
+        if not ev["decided"]:
+            sets += ", reason=?"
+            vals.append("curto")
+        self._db.execute(f"UPDATE events SET {sets} WHERE id=?", (*vals, ev["id"]))
+        self._db.commit()
+
+    # --- regras ---
+    def _decide(self, ev: dict, now: float) -> None:
+        cam = ev["camera"]
+        reason = None
+        last = self._last_notified.get(cam.id)
+        self._sent_times = [t for t in self._sent_times if now - t < 3600]
+        if not self.rules.notify:
+            reason = "somente_registro"
+        elif last is not None and now - last < self.rules.cooldown_seconds:
+            reason = "cooldown"
+        elif len(self._sent_times) >= self.rules.max_notifications_per_hour:
+            reason = "limite_hora"
+        if reason:
+            self._db.execute("UPDATE events SET reason=? WHERE id=?", (reason, ev["id"]))
+            self._db.commit()
+            return
+        self._last_notified[cam.id] = now
+        self._sent_times.append(now)
+        body = f"Movimento detectado: {cam.name} às {ev['start_ts']:%H:%M:%S}"
+        threading.Thread(target=self._notify, args=(ev["id"], cam.name, body), daemon=True).start()
+
+    def _notify(self, event_id: int, name: str, body: str) -> None:
+        errors, ok = [], 0
         for n in self.notifiers:
             try:
                 n(name, body)
@@ -62,14 +130,33 @@ class AlertManager:
                 log.error("notificação falhou: %s", e)
                 errors.append(str(e)[:200])
         with self._lock:
-            self._db.execute("UPDATE alerts SET notified=?, error=? WHERE id=?",
-                             (1 if ok else 0, "; ".join(errors) or None, alert_id))
+            self._db.execute("UPDATE events SET notified=?, error=? WHERE id=?",
+                             (1 if ok else 0, "; ".join(errors) or None, event_id))
             self._db.commit()
 
-    def list_alerts(self, limit: int = 50) -> list[dict]:
+    # --- consulta ---
+    def list_events(self, limit: int = 50, since: str | None = None) -> list[dict]:
+        q = ("SELECT id, camera_id, camera_name, start_ts, end_ts, peak_area_pct, snapshot, "
+             "peak_snapshot, notified, reason, error FROM events")
+        args: list = []
+        if since:
+            q += " WHERE start_ts >= ?"
+            args.append(since)
+        q += " ORDER BY id DESC LIMIT ?"
+        args.append(limit)
         with self._lock:
-            rows = self._db.execute(
-                "SELECT id, ts, camera_id, camera_name, snapshot, notified, error "
-                "FROM alerts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        keys = ("id", "ts", "cameraId", "cameraName", "snapshot", "notified", "error")
-        return [dict(zip(keys, r)) for r in rows]
+            rows = self._db.execute(q, args).fetchall()
+        keys = ("id", "cameraId", "cameraName", "start", "end", "peakAreaPct", "snapshot",
+                "peakSnapshot", "notified", "reason", "error")
+        out = []
+        for r in rows:
+            e = dict(zip(keys, r))
+            e["dvrWindow"] = self._dvr_window(e["start"], e["end"])
+            out.append(e)
+        return out
+
+    @staticmethod
+    def _dvr_window(start: str, end: str | None):
+        s = datetime.fromisoformat(start)
+        e = datetime.fromisoformat(end) if end else s
+        return [(s - DVR_PADDING).strftime("%H:%M:%S"), (e + DVR_PADDING).strftime("%H:%M:%S")]

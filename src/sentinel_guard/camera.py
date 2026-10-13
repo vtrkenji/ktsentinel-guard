@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def redact_url(text: str) -> str:
@@ -18,6 +18,8 @@ class Camera:
     sensitivity: int | None = None
     min_area_pct: float | None = None
     min_consecutive_frames: int | None = None
+    ignore_zones: list = field(default_factory=list)   # polígonos [[x,y],...] normalizados 0..1
+    include_zones: list = field(default_factory=list)  # se houver, só estas áreas contam
 
     @property
     def detection_url(self) -> str:
@@ -31,4 +33,6 @@ class Camera:
             "rtspUrl": redact_url(self.rtsp_url),
             "rtspUrlSecondary": redact_url(self.rtsp_url_secondary) if self.rtsp_url_secondary else None,
             "isActive": self.is_active,
+            "ignoreZones": self.ignore_zones,
+            "includeZones": self.include_zones,
         }

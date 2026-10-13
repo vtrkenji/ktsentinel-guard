@@ -1,6 +1,7 @@
 import json
 import logging
 import signal
+from datetime import datetime
 import threading
 
 from .alerts import AlertManager
@@ -22,6 +23,13 @@ class Daemon:
         self.armed = True
         self._lock = threading.RLock()
         self._stop = threading.Event()
+
+    def is_armed(self) -> bool:
+        """Armado manualmente e, se houver agenda, dentro de uma janela."""
+        if not self.armed:
+            return False
+        sched = self.cfg.schedule
+        return not sched or any(w.active(datetime.now()) for w in sched)
 
     # --- ciclo de vida ---
     def _state_file(self):
@@ -54,9 +62,9 @@ class Daemon:
             self.cfg.data_dir.mkdir(parents=True, exist_ok=True)
             self.armed = self._load_armed()
             self._notifier_list = self._notifiers()
-            self.alerts = AlertManager(self.cfg.data_dir, self.cfg.cooldown_seconds, self._notifier_list)
+            self.alerts = AlertManager(self.cfg.data_dir, self.cfg.rules, self._notifier_list)
             self.workers = [
-                CameraWorker(c, self.cfg.detection, self.alerts, lambda: self.armed)
+                CameraWorker(c, self.cfg.detection, self.alerts, self.is_armed)
                 for c in self.cfg.cameras if c.is_active]
             for w in self.workers:
                 w.start()
@@ -69,6 +77,8 @@ class Daemon:
             for w in self.workers:
                 w.join(timeout=10)
             self.workers = []
+            if self.alerts:
+                self.alerts.close_all()
 
     def run(self) -> int:
         self.start_workers()
@@ -92,7 +102,8 @@ class Daemon:
     # --- comandos do socket ---
     def cmd_status(self):
         with self._lock:
-            return {"armed": self.armed, "cameras": [w.status() for w in self.workers],
+            return {"armed": self.armed, "scheduleActive": self.is_armed(),
+                    "notify": self.cfg.rules.notify, "cameras": [w.status() for w in self.workers],
                     "fcmConfigured": self.cfg.fcm.enabled, "ntfyConfigured": self.cfg.ntfy.enabled}
 
     def cmd_arm(self):
@@ -108,8 +119,10 @@ class Daemon:
     def cmd_list_cameras(self):
         return [c.to_json() for c in self.cfg.cameras]
 
-    def cmd_list_alerts(self, limit=50):
-        return self.alerts.list_alerts(int(limit))
+    def cmd_list_events(self, limit=50, since=None):
+        return self.alerts.list_events(int(limit), since)
+
+    cmd_list_alerts = cmd_list_events
 
     def cmd_test_notification(self):
         if not self._notifier_list:

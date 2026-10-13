@@ -46,3 +46,19 @@ def test_global_brightness_change_ignored():
     det = MotionDetector(warmup_frames=30)
     warm(det, rng, 40)
     assert not any(det.process(scene(brightness=70, rng=rng)) for _ in range(10))
+
+
+def test_ignore_zone_suppresses_and_include_zone_restricts():
+    rng = np.random.default_rng(4)
+    full = [[0, 0], [1, 0], [1, 1], [0, 1]]
+    for kw, expect in (({"ignore_zones": [full]}, False), ({"include_zones": [full]}, True)):
+        det = MotionDetector(warmup_frames=30, **kw)
+        warm(det, rng, 40)
+        hits = [det.process(scene(x=20 + i * 12, rng=rng)) for i in range(15)]
+        assert any(hits) is expect
+    det = MotionDetector(warmup_frames=30)
+    warm(det, rng, 40)
+    for i in range(6):
+        det.process(scene(x=20 + i * 12, rng=rng))
+    x, y, w, h = det.last_bbox
+    assert 0 <= x < 1 and 0 < w < 1

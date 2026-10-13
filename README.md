@@ -19,14 +19,20 @@ Sem `python3-venv` (Debian/Mint): `python3 -m venv --system-site-packages --with
 
 ## Comandos
 `sentinel-guard [--config PATH] <cmd>`: `run`, `check-config`, `gen-topic`, `test-fcm [--dry-run]`,
-`test-camera [id]`, `status`, `arm`, `disarm`, `list-cameras`, `alerts`, `test-notification`, `reload-config`.
+`test-camera [id]`, `events [--since]`, `status`, `arm`, `disarm`, `list-cameras`, `alerts`, `test-notification`, `reload-config`.
 
 Validar FCM: `check-config` → `test-fcm --dry-run` (validate_only, nada é entregue) → `test-fcm` (chega no app).
 
+## Regras e eventos
+Movimento vira um *evento* (início/fim no horário local, igual ao relógio do DVR). Só notifica se durar
+`min_event_seconds`, fora do `cooldown_seconds` e abaixo de `max_notifications_per_hour`; o resto fica
+registrado com o motivo. `sentinel-guard events` lista os eventos com a janela para assistir no DVR e o
+snapshot do pico (com a caixa do movimento). `notify = false` = modo observação. `test-camera` desenha as zonas.
+
 ## Socket
 `$XDG_RUNTIME_DIR/ktsentinel-guard.sock` (600), JSON por linha: `{"id":1,"cmd":"status","args":{}}` →
-`{"id":1,"ok":true,"result":{...}}`. Comandos: status, arm, disarm, list_cameras, list_alerts{limit},
-test_notification, reload_config.
+`{"id":1,"ok":true,"result":{...}}`. Comandos: status, arm, disarm, list_cameras, 
+test_notification, reload_config, list_events{limit,since}.
 
 ## Testes
 `pip install -e .[dev] opencv-python-headless && pytest`. Integração com stream falso:

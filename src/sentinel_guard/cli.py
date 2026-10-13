@@ -60,6 +60,16 @@ def cmd_test_fcm(args):
     return 0
 
 
+def _draw_zones(frame, cam):
+    import numpy as np
+    import cv2
+    h, w = frame.shape[:2]
+    for zones, color in ((cam.ignore_zones, (0, 0, 255)), (cam.include_zones, (0, 255, 0))):
+        for z in zones:
+            pts = np.array([[int(x * w), int(y * h)] for x, y in z], np.int32)
+            cv2.polylines(frame, [pts], True, color, 2)
+
+
 def cmd_test_camera(args):
     import cv2
     from .camera import redact_url
@@ -79,6 +89,7 @@ def cmd_test_camera(args):
             if ok:
                 out = Path(args.out) / f"cam{c.id}_{label}.jpg"
                 out.parent.mkdir(parents=True, exist_ok=True)
+                _draw_zones(frame, c)
                 cv2.imwrite(str(out), frame)
                 print(f"[{c.name}] {label}: OK {frame.shape[1]}x{frame.shape[0]} -> {out}")
             else:
@@ -89,12 +100,29 @@ def cmd_test_camera(args):
 def cmd_socket(args):
     from .server import request
     try:
-        cmd = {"alerts": "list_alerts"}.get(args.cmd, args.cmd.replace("-", "_"))
-        resp = request(socket_path(), cmd, {"limit": args.limit} if args.cmd == "alerts" else {})
+        resp = request(socket_path(), args.cmd.replace("-", "_"), {})
     except OSError as e:
         print(f"daemon não está rodando ({e})"); return 1
     print(json.dumps(resp, indent=2, ensure_ascii=False))
     return 0 if resp.get("ok") else 1
+
+
+def cmd_events(args):
+    from .server import request
+    try:
+        resp = request(socket_path(), "list_events", {"limit": args.limit, "since": args.since})
+    except OSError as e:
+        print(f"daemon não está rodando ({e})"); return 1
+    if not resp.get("ok"):
+        print(resp.get("error")); return 1
+    for e in reversed(resp["result"]):
+        day, t0 = e["start"].split("T")
+        t1 = (e["end"] or e["start"]).split("T")[1]
+        status = "notificado" if e["notified"] else (e["reason"] or "pendente")
+        print(f"#{e['id']:<4} {day} {t0[:8]}–{t1[:8]}  {e['cameraName']:<10} pico {e['peakAreaPct'] or 0:5.1f}%  "
+              f"{status:<17} DVR: {e['dvrWindow'][0]}–{e['dvrWindow'][1]}")
+        print(f"      {e['peakSnapshot'] or e['snapshot']}")
+    return 0
 
 
 def cmd_gen_topic(args):
@@ -116,11 +144,12 @@ def main(argv=None):
     tc.add_argument("id", type=int, nargs="?")
     tc.add_argument("--out", default="/tmp/ktsentinel-guard-test")
     tc.set_defaults(fn=cmd_test_camera)
-    for name in ("status", "arm", "disarm", "list-cameras", "alerts", "test-notification", "reload-config"):
-        s = sub.add_parser(name)
-        s.set_defaults(fn=cmd_socket, cmd=name)
-        if name == "alerts":
-            s.add_argument("--limit", type=int, default=20)
+    for name in ("status", "arm", "disarm", "list-cameras", "test-notification", "reload-config"):
+        sub.add_parser(name).set_defaults(fn=cmd_socket, cmd=name)
+    ev = sub.add_parser("events", help="eventos de movimento com horário para achar no DVR")
+    ev.add_argument("--limit", type=int, default=20)
+    ev.add_argument("--since", help="ex.: 2026-10-13 ou 2026-10-13T08:00")
+    ev.set_defaults(fn=cmd_events)
     args = p.parse_args(argv)
     try:
         return args.fn(args)

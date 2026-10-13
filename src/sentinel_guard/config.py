@@ -1,5 +1,6 @@
 import os
 import stat
+from datetime import datetime, time
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,10 +43,35 @@ class DetectionConfig:
 
 
 @dataclass
+class Rules:
+    notify: bool = True               # False = só registra eventos (modo observação)
+    cooldown_seconds: float = 60.0    # intervalo mínimo entre notificações da mesma câmera
+    min_event_seconds: float = 2.0    # movimento precisa durar isso para notificar
+    event_gap_seconds: float = 5.0    # sem movimento por este tempo encerra o evento
+    max_notifications_per_hour: int = 6
+
+
+@dataclass
+class ScheduleWindow:
+    days: tuple[int, ...]  # 0=segunda ... 6=domingo
+    start: time
+    end: time              # end < start cruza a meia-noite
+
+    def active(self, now: datetime) -> bool:
+        t, d = now.time(), now.weekday()
+        if self.start <= self.end:
+            return d in self.days and self.start <= t < self.end
+        if t >= self.start:
+            return d in self.days
+        return (d - 1) % 7 in self.days and t < self.end
+
+
+@dataclass
 class Config:
     armed: bool = True
     data_dir: Path = field(default_factory=default_data_dir)
-    cooldown_seconds: float = 60.0
+    rules: Rules = field(default_factory=Rules)
+    schedule: list[ScheduleWindow] = field(default_factory=list)
     fcm: FcmConfig = field(default_factory=FcmConfig)
     ntfy: NtfyConfig = field(default_factory=NtfyConfig)
     detection: DetectionConfig = field(default_factory=DetectionConfig)
@@ -61,6 +87,14 @@ def check_private(path: Path) -> None:
 
 def _expand(p: str) -> Path:
     return Path(os.path.expanduser(p))
+
+
+def _zones(c: dict, key: str) -> list:
+    zones = c.get(key, [])
+    for z in zones:
+        if len(z) < 3 or any(len(p) != 2 or not all(0 <= v <= 1 for v in p) for p in z):
+            raise ConfigError(f"{key} da câmera {c.get('id')}: polígonos com >=3 pontos [x,y] entre 0 e 1")
+    return zones
 
 
 def load_config(path: Path, require_private: bool = True) -> Config:
@@ -79,7 +113,21 @@ def load_config(path: Path, require_private: bool = True) -> Config:
     cfg.armed = bool(g.get("armed", True))
     if "data_dir" in g:
         cfg.data_dir = _expand(g["data_dir"])
-    cfg.cooldown_seconds = float(g.get("cooldown_seconds", 60))
+    r = Rules()
+    for k in vars(r):
+        if k in g:
+            setattr(r, k, type(getattr(r, k))(g[k]))
+    cfg.rules = r
+    for w in raw.get("schedule", []):
+        try:
+            h1, m1 = map(int, w["start"].split(":"))
+            h2, m2 = map(int, w["end"].split(":"))
+            days = tuple(w.get("days", range(7)))
+            if not all(0 <= d <= 6 for d in days):
+                raise ValueError("dias devem estar entre 0 (segunda) e 6 (domingo)")
+            cfg.schedule.append(ScheduleWindow(days, time(h1, m1), time(h2, m2)))
+        except (KeyError, ValueError) as e:
+            raise ConfigError(f"[[schedule]] inválido: {e}") from e
 
     f = raw.get("fcm", {})
     cfg.fcm = FcmConfig(
@@ -122,5 +170,7 @@ def load_config(path: Path, require_private: bool = True) -> Config:
             sensitivity=c.get("sensitivity"),
             min_area_pct=c.get("min_area_pct"),
             min_consecutive_frames=c.get("min_consecutive_frames"),
+            ignore_zones=_zones(c, "ignore_zones"),
+            include_zones=_zones(c, "include_zones"),
         ))
     return cfg

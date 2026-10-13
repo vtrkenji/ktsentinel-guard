@@ -3,7 +3,17 @@
 [general]
 armed = true
 # data_dir = "~/.local/share/ktsentinel-guard"
-cooldown_seconds = 60
+notify = true                  # false = só registra eventos (ajuste da detecção)
+cooldown_seconds = 60          # intervalo mínimo entre notificações da mesma câmera
+min_event_seconds = 2          # movimento precisa durar isso para notificar
+event_gap_seconds = 5          # sem movimento por este tempo encerra o evento
+max_notifications_per_hour = 6
+
+# Agenda opcional (vazia = só o arm/disarm manual). Dias: 0=segunda ... 6=domingo.
+# [[schedule]]
+# days = [0, 1, 2, 3, 4]
+# start = "08:00"
+# end = "18:00"
 
 [fcm]
 project_id = "SEU-PROJECT-ID"
@@ -29,3 +39,6 @@ name = "Quintal"
 rtsp_url = "rtsp://IP_DVR:554/user=USUARIO&password=SENHA&channel=1&stream=0.sdp"
 rtsp_url_secondary = "rtsp://IP_DVR:554/user=USUARIO&password=SENHA&channel=1&stream=1.sdp"
 is_active = true
+# Zonas: polígonos [[x,y],...] normalizados (0..1). Ignore: rua visível pelo portão, relógio do DVR.
+# ignore_zones = [[[0.27,0.10],[0.90,0.10],[0.90,0.60],[0.27,0.60]]]
+# include_zones = []   # se preenchido, só estas áreas contam

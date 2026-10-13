@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 from sentinel_guard.alerts import AlertManager
+from sentinel_guard.config import Rules
 from sentinel_guard.camera import Camera
 from sentinel_guard.capture import CameraWorker
 from sentinel_guard.config import DetectionConfig, FcmConfig
@@ -13,30 +14,6 @@ import pytest
 
 FRAME = np.zeros((48, 64, 3), np.uint8)
 CAM = Camera(id=1, name="Quintal", rtsp_url="rtsp://h/x")
-
-
-def test_cooldown_snapshot_history(tmp_path):
-    t = [0.0]
-    sent = []
-    am = AlertManager(tmp_path, 60, [lambda n, b: sent.append(b)], clock=lambda: t[0])
-    assert am.trigger(CAM, FRAME, wait=True) == 1
-    t[0] = 30
-    assert am.trigger(CAM, FRAME, wait=True) is None
-    t[0] = 61
-    assert am.trigger(CAM, FRAME, wait=True) == 2
-    assert sent == ["Movimento detectado: Quintal"] * 2
-    rows = am.list_alerts()
-    assert len(rows) == 2 and rows[0]["notified"] == 1
-    assert (tmp_path / "snapshots").glob("*.jpg")
-
-
-def test_notifier_failure_recorded(tmp_path):
-    def boom(n, b):
-        raise RuntimeError("sem rede")
-    am = AlertManager(tmp_path, 0, [boom])
-    am.trigger(CAM, FRAME, wait=True)
-    r = am.list_alerts()[0]
-    assert r["notified"] == 0 and "sem rede" in r["error"]
 
 
 class FakeResp:
@@ -124,7 +101,7 @@ class FlakyCap:
 
 
 def test_worker_reconnects(tmp_path):
-    am = AlertManager(tmp_path, 60, [])
+    am = AlertManager(tmp_path, Rules(), [])
     w = CameraWorker(CAM, DetectionConfig(fps=50), am, lambda: True, capture_factory=FlakyCap)
     w.start()
     deadline = time.time() + 8
