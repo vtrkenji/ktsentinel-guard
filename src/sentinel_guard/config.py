@@ -55,6 +55,8 @@ class Rules:
     event_gap_seconds: float = 5.0    # sem movimento por este tempo encerra o evento
     max_notifications_per_hour: int = 6
     require_person: bool = False      # só notifica se uma pessoa foi confirmada (exige detection.person_filter)
+    keep_days: int = 14               # apaga eventos/fotos mais antigos que isso (0 = nunca)
+    max_snapshots_mb: int = 500       # teto de espaço das fotos; apaga as mais antigas primeiro (0 = sem teto)
 
 
 @dataclass

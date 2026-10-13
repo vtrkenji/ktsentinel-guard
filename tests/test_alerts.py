@@ -114,3 +114,20 @@ def test_require_person_notifies_when_person_seen_late(tmp_path):
     time.sleep(0.3)
     assert len(sent) == 1 and sent[0].startswith("Pessoa detectada")
     assert am.list_events()[0]["person"] is True
+
+
+def test_prune_remove_antigos_e_respeita_teto(tmp_path):
+    import os
+    from sentinel_guard.alerts import AlertManager
+    from sentinel_guard.config import Rules
+    am = AlertManager(tmp_path, Rules(keep_days=1, max_snapshots_mb=0), [])
+    snaps = tmp_path / "snapshots"
+    old, new = snaps / "old.jpg", snaps / "new.jpg"
+    old.write_bytes(b"x"); new.write_bytes(b"x")
+    os.utime(old, (1, 1))
+    assert am.prune() == 1 and not old.exists() and new.exists()
+    am.rules.keep_days = 0
+    am.rules.max_snapshots_mb = 1
+    (snaps / "big.jpg").write_bytes(b"x" * 2 * 1024 * 1024)
+    am.prune()
+    assert not (snaps / "big.jpg").exists() or not new.exists()

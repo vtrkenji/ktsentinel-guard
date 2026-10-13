@@ -99,9 +99,40 @@ class AlertManager:
             self._decide({"id": cur.lastrowid, "camera": camera, "person": True, "start_ts": ts,
                           "kind": kind, "label": label}, now)
 
+    def prune(self) -> int:
+        """Rotação estilo DVR: remove fotos/eventos além de keep_days e do teto de MB."""
+        removed = 0
+        root = self.data_dir / "snapshots"
+        with self._lock:
+            if self.rules.keep_days > 0:
+                cutoff = (self._now() - timedelta(days=self.rules.keep_days)).isoformat()
+                self._db.execute("DELETE FROM events WHERE start_ts < ?", (cutoff,))
+                self._db.commit()
+                limit = time.time() - self.rules.keep_days * 86400
+                for f in root.glob("*.jpg"):
+                    if f.stat().st_mtime < limit:
+                        f.unlink(missing_ok=True)
+                        removed += 1
+            if self.rules.max_snapshots_mb > 0:
+                files = sorted(root.glob("*.jpg"), key=lambda f: f.stat().st_mtime)
+                total = sum(f.stat().st_size for f in files)
+                cap = self.rules.max_snapshots_mb * 1024 * 1024
+                for f in files:
+                    if total <= cap:
+                        break
+                    total -= f.stat().st_size
+                    f.unlink(missing_ok=True)
+                    removed += 1
+        if removed:
+            log.info("limpeza: %d fotos antigas removidas", removed)
+        return removed
+
     def tick(self) -> None:
-        """Fecha eventos sem movimento há event_gap_seconds."""
+        """Fecha eventos sem movimento há event_gap_seconds e faz a limpeza a cada hora."""
         now = self._clock()
+        if now - getattr(self, "_last_prune", -3600) >= 3600:
+            self._last_prune = now
+            self.prune()
         with self._lock:
             for cid in [c for c, e in self._open.items() if now - e["last"] >= self.rules.event_gap_seconds]:
                 self._close(cid)
