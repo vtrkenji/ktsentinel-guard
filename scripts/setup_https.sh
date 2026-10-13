@@ -26,6 +26,7 @@ IP=$(ip -4 route get 1.1.1.1 | sed -n 's/.*src \([0-9.]*\).*/\1/p')
 cat > ~/.config/ktsentinel-guard/Caddyfile <<CADDY
 {
 	admin off
+	auto_https disable_redirects
 }
 $DOMAIN:$PORT {
 	tls {
