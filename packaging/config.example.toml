@@ -7,6 +7,7 @@ notify = true                  # false = só registra eventos (ajuste da detecç
 cooldown_seconds = 60          # intervalo mínimo entre notificações da mesma câmera
 min_event_seconds = 2          # movimento precisa durar isso para notificar
 event_gap_seconds = 5          # sem movimento por este tempo encerra o evento
+require_person = false   # true: só notifica se pessoa confirmada (exige person_filter)
 max_notifications_per_hour = 6
 
 # Agenda opcional (vazia = só o arm/disarm manual). Dias: 0=segunda ... 6=domingo.
@@ -26,6 +27,9 @@ enabled = false
 url = "https://ntfy.sh/seu-topico-secreto"
 
 [detection]
+# Filtro de pessoa (rode scripts/download_models.sh). O MOG2 acorda, o modelo confirma só quando há movimento.
+person_filter = false
+person_confidence = 0.5
 sensitivity = 5            # 1-10
 min_area_pct = 0.5
 min_consecutive_frames = 3

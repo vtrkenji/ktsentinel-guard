@@ -54,3 +54,10 @@ port = 8765
 Gere o token com `sentinel-guard gen-token` (grava `~/.config/ktsentinel-guard/api-token`, perm 600) e envie
 `Authorization: Bearer <token>`. Rotas: `GET /v1/status`, `GET /v1/cameras`, `POST /v1/arm`, `POST /v1/disarm`,
 `GET /v1/events?limit=&since=`, `GET /v1/snapshot?id=N&kind=peak|start`.
+
+## Filtro de pessoa
+
+`scripts/download_models.sh` baixa o MobileNet-SSD (~23 MB) para `~/.local/share/ktsentinel-guard/models`.
+Com `[detection] person_filter = true`, quando o MOG2 detecta movimento o modelo roda no máx. 1x/s e marca o
+evento (`person` no histórico, bbox da pessoa no snapshot). Com `[general] require_person = true` só pessoas
+notificam; movimento sem pessoa fica no histórico com `reason = "sem_pessoa"`.

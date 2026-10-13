@@ -40,6 +40,10 @@ class DetectionConfig:
     fps: float = 5.0
     history: int = 500
     warmup_seconds: float = 10.0
+    person_filter: bool = False       # confirma pessoa com modelo leve quando há movimento
+    person_confidence: float = 0.5
+    person_check_seconds: float = 1.0
+    person_model_dir: Path | None = None
 
 
 @dataclass
@@ -49,6 +53,7 @@ class Rules:
     min_event_seconds: float = 2.0    # movimento precisa durar isso para notificar
     event_gap_seconds: float = 5.0    # sem movimento por este tempo encerra o evento
     max_notifications_per_hour: int = 6
+    require_person: bool = False      # só notifica se uma pessoa foi confirmada (exige detection.person_filter)
 
 
 @dataclass
@@ -162,8 +167,11 @@ def load_config(path: Path, require_private: bool = True) -> Config:
     d = raw.get("detection", {})
     dd = DetectionConfig()
     for k in vars(dd):
-        if k in d:
+        if k in d and k != "person_model_dir":
             setattr(dd, k, type(getattr(dd, k))(d[k]))
+    dd.person_model_dir = _expand(d["person_model_dir"]) if d.get("person_model_dir") else cfg.data_dir / "models"
+    if cfg.rules.require_person and not dd.person_filter:
+        raise ConfigError("require_person exige [detection].person_filter = true")
     if not 1 <= dd.sensitivity <= 10:
         raise ConfigError("[detection].sensitivity deve estar entre 1 e 10")
     cfg.detection = dd

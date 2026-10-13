@@ -31,6 +31,7 @@ class CameraWorker(threading.Thread):
         self.last_error: str | None = None
         self.reconnects = 0
         self.motion_events = 0
+        self._person = None
 
     def stop(self) -> None:
         self._stop_evt.set()
@@ -49,6 +50,21 @@ class CameraWorker(threading.Thread):
             min_consecutive_frames=c.min_consecutive_frames or d.min_consecutive_frames,
             history=d.history, warmup_frames=int(d.warmup_seconds * d.fps),
             ignore_zones=c.ignore_zones, include_zones=c.include_zones)
+
+    def _person_detector(self):
+        d = self.det_cfg
+        if not d.person_filter:
+            return None
+        from .person import PersonDetector, model_available
+        if not model_available(d.person_model_dir):
+            log.error("[%s] modelo de pessoa ausente em %s (rode scripts/download_models.sh); filtro desativado",
+                      self.camera.name, d.person_model_dir)
+            return None
+        try:
+            return PersonDetector(d.person_model_dir, d.person_confidence)
+        except Exception as e:
+            log.error("[%s] falha ao carregar modelo de pessoa (%s); filtro desativado", self.camera.name, e)
+            return None
 
     def run(self) -> None:
         backoff = 1.0
@@ -81,6 +97,9 @@ class CameraWorker(threading.Thread):
 
     def _read_loop(self, cap) -> None:
         det = self._detector()
+        if self._person is None and self.det_cfg.person_filter:
+            self._person = self._person_detector()
+        last_person_check = 0.0
         interval = 1.0 / self.det_cfg.fps
         next_due = 0.0
         was_armed = False
@@ -106,4 +125,10 @@ class CameraWorker(threading.Thread):
                 return
             if det.process(frame):
                 self.motion_events += 1
-                self.alerts.motion(self.camera, frame, det.last_area_pct, det.last_bbox)
+                bbox, person = det.last_bbox, False
+                if self._person is not None and now - last_person_check >= self.det_cfg.person_check_seconds:
+                    last_person_check = now
+                    box = self._person.detect(frame)
+                    if box is not None:
+                        bbox, person = box, True
+                self.alerts.motion(self.camera, frame, det.last_area_pct, bbox, person)

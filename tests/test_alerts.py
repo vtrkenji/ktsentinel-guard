@@ -82,3 +82,35 @@ def test_schedule_window_crossing_midnight():
     tue = datetime(2026, 10, 13, 5, 0)
     assert w.active(mon) and w.active(tue)
     assert not w.active(datetime(2026, 10, 13, 7, 0)) and not w.active(datetime(2026, 10, 13, 23, 0))
+
+
+def _run_event(am, t, person_at=None, seconds=6):
+    import numpy as np
+    from sentinel_guard.camera import Camera
+    cam = Camera(id=9, name="Garagem", rtsp_url="rtsp://h/x")
+    for s in range(seconds):
+        t[0] = s
+        am.motion(cam, np.zeros((48, 64, 3), np.uint8), 3.0, (0.1, 0.1, 0.2, 0.2), person=person_at is not None and s >= person_at)
+    t[0] = seconds + 10
+    am.tick()
+
+
+def test_require_person_blocks_motion_only(tmp_path):
+    sent = []
+    t = [0.0]
+    am = AlertManager(tmp_path, Rules(require_person=True), [lambda n, b: sent.append(b)], clock=lambda: t[0])
+    _run_event(am, t)
+    assert not sent
+    ev = am.list_events()[0]
+    assert ev["reason"] == "sem_pessoa" and ev["person"] is False
+
+
+def test_require_person_notifies_when_person_seen_late(tmp_path):
+    import time
+    sent = []
+    t = [0.0]
+    am = AlertManager(tmp_path, Rules(require_person=True), [lambda n, b: sent.append(b)], clock=lambda: t[0])
+    _run_event(am, t, person_at=4)
+    time.sleep(0.3)
+    assert len(sent) == 1 and sent[0].startswith("Pessoa detectada")
+    assert am.list_events()[0]["person"] is True

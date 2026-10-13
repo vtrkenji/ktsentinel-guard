@@ -46,11 +46,13 @@ class AlertManager:
             "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "camera_id INTEGER, camera_name TEXT, start_ts TEXT NOT NULL, end_ts TEXT, "
             "peak_area_pct REAL, snapshot TEXT, peak_snapshot TEXT, "
-            "notified INTEGER DEFAULT 0, reason TEXT, error TEXT)")
+            "notified INTEGER DEFAULT 0, reason TEXT, error TEXT, person INTEGER DEFAULT 0)")
+        if "person" not in {r[1] for r in self._db.execute("PRAGMA table_info(events)")}:
+            self._db.execute("ALTER TABLE events ADD COLUMN person INTEGER DEFAULT 0")
         self._db.commit()
 
     # --- ciclo do evento ---
-    def motion(self, camera, frame, area_pct: float, bbox) -> None:
+    def motion(self, camera, frame, area_pct: float, bbox, person: bool = False) -> None:
         """Chamado a cada frame com movimento sustentado."""
         now = self._clock()
         with self._lock:
@@ -66,11 +68,15 @@ class AlertManager:
                 self._db.commit()
                 ev = self._open[camera.id] = {
                     "id": cur.lastrowid, "start": now, "last": now, "peak": area_pct, "decided": False,
-                    "peak_frame": frame, "peak_bbox": bbox, "camera": camera, "start_ts": ts}
+                    "peak_frame": frame, "peak_bbox": bbox, "person": False, "camera": camera, "start_ts": ts}
             ev["last"] = now
-            if area_pct > ev["peak"]:
+            if person and not ev["person"]:
+                ev.update(person=True, peak_frame=frame, peak_bbox=bbox)  # frame com a pessoa vira o pico
+            elif area_pct > ev["peak"] and not ev["person"]:
                 ev.update(peak=area_pct, peak_frame=frame, peak_bbox=bbox)
-            if not ev["decided"] and now - ev["start"] >= self.rules.min_event_seconds:
+            ev["peak"] = max(ev["peak"], area_pct)
+            if (not ev["decided"] and now - ev["start"] >= self.rules.min_event_seconds
+                    and (ev["person"] or not self.rules.require_person)):
                 ev["decided"] = True
                 self._decide(ev, now)
 
@@ -91,11 +97,12 @@ class AlertManager:
         end_ts = ev["start_ts"] + timedelta(seconds=max(0.0, ev["last"] - ev["start"]))
         peak_snap = self.data_dir / "snapshots" / f"cam{cid}_{ev['start_ts']:%Y%m%d_%H%M%S}_peak.jpg"
         cv2.imwrite(str(peak_snap), _annotate(ev["peak_frame"], ev["peak_bbox"]), [cv2.IMWRITE_JPEG_QUALITY, 85])
-        sets = "end_ts=?, peak_area_pct=?, peak_snapshot=?"
-        vals = [end_ts.isoformat(timespec="seconds"), ev["peak"], str(peak_snap)]
+        sets = "end_ts=?, peak_area_pct=?, peak_snapshot=?, person=?"
+        vals = [end_ts.isoformat(timespec="seconds"), ev["peak"], str(peak_snap), int(ev["person"])]
         if not ev["decided"]:
+            long_enough = ev["last"] - ev["start"] >= self.rules.min_event_seconds
             sets += ", reason=?"
-            vals.append("curto")
+            vals.append("sem_pessoa" if self.rules.require_person and not ev["person"] and long_enough else "curto")
         self._db.execute(f"UPDATE events SET {sets} WHERE id=?", (*vals, ev["id"]))
         self._db.commit()
 
@@ -117,7 +124,8 @@ class AlertManager:
             return
         self._last_notified[cam.id] = now
         self._sent_times.append(now)
-        body = f"Movimento detectado: {cam.name} às {ev['start_ts']:%H:%M:%S}"
+        what = "Pessoa detectada" if ev["person"] else "Movimento detectado"
+        body = f"{what}: {cam.name} às {ev['start_ts']:%H:%M:%S}"
         threading.Thread(target=self._notify, args=(ev["id"], cam.name, body), daemon=True).start()
 
     def _notify(self, event_id: int, name: str, body: str) -> None:
@@ -137,7 +145,7 @@ class AlertManager:
     # --- consulta ---
     def list_events(self, limit: int = 50, since: str | None = None) -> list[dict]:
         q = ("SELECT id, camera_id, camera_name, start_ts, end_ts, peak_area_pct, snapshot, "
-             "peak_snapshot, notified, reason, error FROM events")
+             "peak_snapshot, notified, reason, error, person FROM events")
         args: list = []
         if since:
             q += " WHERE start_ts >= ?"
@@ -147,10 +155,11 @@ class AlertManager:
         with self._lock:
             rows = self._db.execute(q, args).fetchall()
         keys = ("id", "cameraId", "cameraName", "start", "end", "peakAreaPct", "snapshot",
-                "peakSnapshot", "notified", "reason", "error")
+                "peakSnapshot", "notified", "reason", "error", "person")
         out = []
         for r in rows:
             e = dict(zip(keys, r))
+            e["person"] = bool(e["person"])
             e["dvrWindow"] = self._dvr_window(e["start"], e["end"])
             out.append(e)
         return out
