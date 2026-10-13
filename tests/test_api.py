@@ -121,3 +121,27 @@ def test_lockout_after_failures(tmp_path):
         assert call(base, "/v1/status")[0] == 429  # bloqueado mesmo com token certo
     finally:
         api.close()
+
+
+def test_lockout_uses_forwarded_ip_from_local_proxy(tmp_path):
+    tf = tmp_path / "token"
+    tf.write_text(TOKEN)
+    tf.chmod(0o600)
+    am = AlertManager(tmp_path / "d", Rules(notify=False), [])
+    api = ApiServer(ApiConfig(enabled=True, port=0, token_file=tf), FakeDaemon(am))
+    api.start()
+    base = f"http://127.0.0.1:{api.address[1]}"
+
+    def hit(ip, token):
+        req = urllib.request.Request(base + "/v1/status", headers={"Authorization": f"Bearer {token}", "X-Forwarded-For": ip})
+        try:
+            return urllib.request.urlopen(req, timeout=5).status
+        except urllib.error.HTTPError as e:
+            return e.code
+    try:
+        for _ in range(5):
+            assert hit("203.0.113.9", "x" * 40) == 401
+        assert hit("203.0.113.9", TOKEN) == 429
+        assert hit("198.51.100.1", TOKEN) == 200  # outro IP externo não é afetado
+    finally:
+        api.close()

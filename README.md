@@ -78,3 +78,11 @@ tem botões de armar/desarmar. O token fica só na sessão do navegador.
 Para acessar de fora de casa sem expor nada na internet: instale o Tailscale no notebook (`sudo tailscale up`)
 e no celular, e troque `bind` para o IP Tailscale do notebook (`tailscale ip -4`) ou `0.0.0.0` com firewall.
 As fotos continuam só no notebook; nada é enviado a serviços de nuvem.
+
+### Acesso de fora via DuckDNS (HTTPS)
+
+`scripts/setup_https.sh [dominio] [porta=8443]` instala o Caddy (sem root) no notebook, obtém o certificado
+Let's Encrypt por DNS-01 e faz proxy para a API. O token do DuckDNS é pedido no seu terminal e fica só em
+`~/.config/ktsentinel-guard/duckdns.env` (600). Depois encaminhe no roteador a porta externa 8443 para o notebook
+e abra `https://<dominio>:8443/`. A API bloqueia por 5 min o IP que errar o token 5 vezes (o IP real vem do
+cabeçalho `X-Forwarded-For` do proxy local). Observação: o token do DuckDNS vale para todos os seus domínios.

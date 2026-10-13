@@ -30,7 +30,7 @@ MAX_FAILS = 5
 LOCKOUT_SECONDS = 300
 
 
-def make_handler(daemon, token: str):
+def make_handler(daemon, token: str, trusted_proxies=frozenset({"127.0.0.1"})):
     fails: dict[str, list] = {}  # ip -> [contagem, bloqueado_até]
     fails_lock = threading.Lock()
 
@@ -59,6 +59,8 @@ def make_handler(daemon, token: str):
             if method == "GET" and urlparse(self.path).path in ("/", "/index.html"):
                 return self._send(200, WEB_PAGE.read_bytes(), "text/html; charset=utf-8")  # sem dados; o token vai no JS
             ip = self.client_address[0]
+            if ip in trusted_proxies and self.headers.get("X-Forwarded-For"):
+                ip = self.headers["X-Forwarded-For"].split(",")[-1].strip()  # IP real, anexado pelo proxy local
             with fails_lock:
                 rec = fails.get(ip)
                 if rec and rec[1] > time.monotonic():
@@ -114,7 +116,7 @@ class ApiServer:
         token = path.read_text().strip()
         if len(token) < 20:
             raise RuntimeError("token da API muito curto")
-        self._httpd = ThreadingHTTPServer((cfg.bind, cfg.port), make_handler(daemon, token))
+        self._httpd = ThreadingHTTPServer((cfg.bind, cfg.port), make_handler(daemon, token, frozenset({"127.0.0.1", cfg.bind})))
         self._httpd.daemon_threads = True
         self.address = self._httpd.server_address
 
