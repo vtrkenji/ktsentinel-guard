@@ -1,0 +1,58 @@
+# Copie para ~/.config/ktsentinel-guard/config.toml e rode: chmod 600 config.toml
+# NUNCA commite o arquivo preenchido.
+#
+# Perfil Segurança (fora / dormindo): person_filter + require_person + behavior_only.
+# Push só em tripwire ou loitering com pessoa. Calibrar: notify = false (histórico sem aviso).
+[general]
+armed = true
+# data_dir = "~/.local/share/ktsentinel-guard"
+notify = true
+cooldown_seconds = 60
+min_event_seconds = 2
+event_gap_seconds = 5
+require_person = true
+behavior_only = true
+max_notifications_per_hour = 6
+
+# Agenda opcional (vazia = só o arm/disarm manual). Dias: 0=segunda ... 6=domingo.
+# [[schedule]]
+# days = [0, 1, 2, 3, 4, 5, 6]
+# start = "23:00"
+# end = "07:00"
+
+[fcm]
+project_id = "SEU-PROJECT-ID"
+service_account_file = "~/.config/ktsentinel-guard/fcm-service-account.json"
+topic = "sentinel_00000000000000000000000000000000"   # o mesmo tópico que o app assina
+title = "kTsentinel - Casa"
+
+[ntfy]
+enabled = false
+url = "https://ntfy.sh/seu-topico-secreto"
+
+[detection]
+# Rode scripts/download_models.sh. Sem o modelo o Guard não envia push (fail-closed).
+person_filter = true
+person_confidence = 0.5
+sensitivity = 5            # 1-10
+min_area_pct = 0.5
+min_consecutive_frames = 3
+fps = 5
+history = 500
+warmup_seconds = 10
+
+[[cameras]]
+id = 1
+name = "Quintal"
+rtsp_url = "rtsp://IP_DVR:554/user=USUARIO&password=SENHA&channel=1&stream=0.sdp"
+rtsp_url_secondary = "rtsp://IP_DVR:554/user=USUARIO&password=SENHA&channel=1&stream=1.sdp"
+is_active = true
+# Zonas: desenhe na página do notebook (aba Zonas) ou edite aqui. Coordenadas 0..1.
+# include_zones = [[[0.1,0.2],[0.9,0.2],[0.9,0.95],[0.1,0.95]]]   # área de scan; vazio = quadro inteiro
+# ignore_zones = [[[0.27,0.10],[0.90,0.10],[0.90,0.60],[0.27,0.60]]]
+# loiter_seconds = 30
+# loiter_zone = [[0.1,0.4],[0.9,0.4],[0.9,0.95],[0.1,0.95]]
+# [[cameras.tripwires]]
+# name = "portão"
+# line = [[0.5,0.0],[0.5,1.0]]
+# direction = "both"                        # both | ab | ba

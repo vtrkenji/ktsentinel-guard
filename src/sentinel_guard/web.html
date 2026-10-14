@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>kTsentinel Guard</title>
+<style>
+body{margin:0;background:#070C12;color:#eee;font-family:system-ui,sans-serif}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:#0d1520;position:sticky;top:0;z-index:2}
+h1{font-size:18px;margin:0;color:#F5B62E;flex:1}
+button,input,select{background:#1a2535;color:#eee;border:1px solid #2a3a50;border-radius:6px;padding:8px 12px}
+button.on,button.tool.on{background:#E5B14D;color:#070C12;border-color:#E5B14D}
+#warn{background:#3a1a1a;color:#ffb4b4;padding:8px 16px;display:none;font-size:14px}
+#tabs{display:flex;gap:4px;padding:8px 16px}
+#tabs button{opacity:.7}#tabs button.on{opacity:1}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px}
+.card{background:#0d1520;border-radius:8px;overflow:hidden}.card img{width:100%;display:block;cursor:pointer}
+.meta{padding:8px 10px;font-size:13px}.tag{color:#E5B14D}.dim{color:#8a99ad}
+#login,#zones{padding:16px;max-width:960px;margin:auto}
+#stage{position:relative;display:inline-block;max-width:100%;line-height:0;background:#000}
+#stage img,#stage canvas{max-width:100%;height:auto;display:block}
+#stage canvas{position:absolute;left:0;top:0;width:100%;height:100%;cursor:crosshair}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;align-items:center}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+</style></head><body>
+<header><h1>kTsentinel Guard</h1><span id="state" class="dim"></span>
+<button id="arm">Armar</button><button id="disarm">Desarmar</button>
+<button id="testn">Testar aviso</button><button id="refresh">Atualizar</button></header>
+<div id="warn"></div>
+<div id="tabs"><button id="tab-ev" class="on">Eventos</button><button id="tab-z">Zonas</button></div>
+<div id="login" hidden><p>Token da API:</p><input id="tok" type="password" style="width:100%"><p><button id="go">Entrar</button></p><p id="err" style="color:#ff6b6b"></p></div>
+<div id="grid"></div>
+<div id="zones" hidden>
+<p class="dim">Desenhe no notebook em cima de <b>uma foto</b> (não é vídeo ao vivo). Scan = onde vigia; ignore = rua/relógio; tripwire = cruzou a linha; loiter = pessoa parada.</p>
+<div class="tools">
+<select id="cam"></select>
+<button type="button" id="foto">Tirar foto</button>
+<button type="button" class="tool on" data-t="include"><span class="swatch" style="background:#3c3"></span>Scan</button>
+<button type="button" class="tool" data-t="ignore"><span class="swatch" style="background:#e44"></span>Ignorar</button>
+<button type="button" class="tool" data-t="tripwire"><span class="swatch" style="background:#4cf"></span>Tripwire</button>
+<button type="button" class="tool" data-t="loiter"><span class="swatch" style="background:#fc0"></span>Loiter</button>
+<label class="dim">Loiter s <input id="loiterS" type="number" min="0" value="30" style="width:4.5em"></label>
+<label class="dim">Dir <select id="tdir"><option value="both">ambas</option><option value="ab">A→B</option><option value="ba">B→A</option></select></label>
+<button type="button" id="undo">Desfazer ponto</button>
+<button type="button" id="clear">Limpar ferramenta</button>
+<button type="button" id="saveg">Salvar</button>
+</div>
+<p id="hint" class="dim">Scan/ignorar/loiter: clique os cantos, depois duplo-clique para fechar. Tripwire: dois cliques.</p>
+<div id="stage"><img id="still" alt=""><canvas id="cv"></canvas></div>
+<p id="gmsg" class="dim"></p>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let token=sessionStorage.getItem("token")||"";
+let tab="ev", tool="include", draft=[], geo=emptyGeo(), cams=[], imgUrl=null;
+const kinds={tripwire:"Tripwire",loiter:"Loitering",motion:"Movimento"};
+const col={include:"#33cc33",ignore:"#ee4444",tripwire:"#44ccff",loiter:"#ffcc00",draft:"#E5B14D"};
+const api=(p,o={})=>fetch(p,{...o,headers:{Authorization:"Bearer "+token,...(o.headers||{})}});
+function emptyGeo(){return {include_zones:[],ignore_zones:[],tripwires:[],loiter_zone:[],loiter_seconds:null}}
+function fromCam(c){
+  return {include_zones:c.includeZones||[],ignore_zones:c.ignoreZones||[],tripwires:c.tripwires||[],
+    loiter_zone:c.loiterZone||[],loiter_seconds:c.loiterSeconds||null};
+}
+async function load(){
+  if(!token){$("login").hidden=false;return}
+  const s=await api("/v1/status");
+  if(s.status==401||s.status==429){sessionStorage.removeItem("token");token="";$("login").hidden=false;$("err").textContent=s.status==429?"Muitas tentativas. Aguarde 5 minutos.":"Token inválido.";return}
+  $("err").textContent="";$("login").hidden=true;
+  const st=(await s.json()).result;
+  $("state").textContent=(st.scheduleActive?"vigindo":(st.armed?"armado, fora da agenda":"desarmado"))
+    +" · pessoa "+(st.personModel||"?");
+  const w=st.warnings||[];
+  $("warn").style.display=w.length?"block":"none";
+  $("warn").textContent=w.join(" · ");
+  cams=st.cameras||[];
+  if(tab==="ev") await loadEvents(); else fillCams();
+}
+async function loadEvents(){
+  $("grid").hidden=false;$("zones").hidden=true;
+  const ev=(await (await api("/v1/events?limit=60")).json()).result;
+  const g=$("grid");g.innerHTML="";
+  for(const e of ev){
+    const c=document.createElement("div");c.className="card";
+    const img=document.createElement("img");img.loading="lazy";
+    api("/v1/snapshot?id="+e.id).then(r=>r.ok?r.blob():null).then(b=>{if(b)img.src=URL.createObjectURL(b)});
+    img.onclick=()=>img.requestFullscreen&&img.requestFullscreen();
+    const m=document.createElement("div");m.className="meta";
+    const win=e.dvrWindow?`<br><span class="dim">DVR: ${e.dvrWindow.start||e.dvrWindow[0]||""} – ${e.dvrWindow.end||e.dvrWindow[1]||""}</span>`:"";
+    m.innerHTML=`<b>${e.cameraName}</b> <span class="tag">${e.person?"pessoa · ":""}${kinds[e.kind]||e.kind}</span><br>${e.start.replace("T"," ").slice(0,19)}<br><span class="dim">${e.notified?"notificado":(e.reason||"")}</span>${win}`;
+    c.append(img,m);g.append(c);
+  }
+}
+function fillCams(){
+  $("grid").hidden=true;$("zones").hidden=false;
+  const sel=$("cam");const keep=sel.value;
+  sel.innerHTML=cams.map(c=>`<option value="${c.id}">${c.id}: ${c.name} (${c.state||"?"})</option>`).join("");
+  if(keep) sel.value=keep;
+  const c=cams.find(x=>String(x.id)===sel.value);
+  if(c){geo=fromCam(c);$("loiterS").value=geo.loiter_seconds||30;draw()}
+}
+function currentCam(){return cams.find(x=>String(x.id)===$("cam").value)}
+function pt(e){
+  const r=$("cv").getBoundingClientRect();
+  return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)), Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))];
+}
+function poly(ctx,w,h,pts,stroke,fill){
+  if(!pts||pts.length<2)return;
+  ctx.beginPath();pts.forEach((p,i)=>{const x=p[0]*w,y=p[1]*h;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
+  if(pts.length>2)ctx.closePath();
+  ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke();
+  if(fill&&pts.length>2){ctx.fillStyle=fill;ctx.fill()}
+}
+function draw(){
+  const cv=$("cv"), img=$("still");
+  if(!img.naturalWidth){cv.width=cv.height=0;return}
+  cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+  const ctx=cv.getContext("2d"), w=cv.width, h=cv.height;
+  geo.include_zones.forEach(z=>poly(ctx,w,h,z,col.include,"rgba(51,204,51,.15)"));
+  geo.ignore_zones.forEach(z=>poly(ctx,w,h,z,col.ignore,"rgba(238,68,68,.2)"));
+  if(geo.loiter_zone.length) poly(ctx,w,h,geo.loiter_zone,col.loiter,"rgba(255,204,0,.15)");
+  geo.tripwires.forEach(t=>{
+    const a=t.line[0],b=t.line[1];
+    ctx.beginPath();ctx.moveTo(a[0]*w,a[1]*h);ctx.lineTo(b[0]*w,b[1]*h);
+    ctx.strokeStyle=col.tripwire;ctx.lineWidth=3;ctx.stroke();
+  });
+  if(draft.length){
+    if(tool==="tripwire") poly(ctx,w,h,draft,col.draft);
+    else poly(ctx,w,h,draft,col.draft,"rgba(229,177,77,.12)");
+    draft.forEach(p=>{ctx.fillStyle=col.draft;ctx.beginPath();ctx.arc(p[0]*w,p[1]*h,5,0,6.28);ctx.fill()});
+  }
+}
+function closePoly(){
+  if(draft.length<3)return;
+  if(tool==="include") geo.include_zones=[draft.slice()];
+  else if(tool==="ignore") geo.ignore_zones.push(draft.slice());
+  else if(tool==="loiter") geo.loiter_zone=draft.slice();
+  draft=[];draw();
+}
+$("cv").onclick=e=>{
+  const p=pt(e);
+  if(tool==="tripwire"){
+    draft.push(p);
+    if(draft.length===2){
+      geo.tripwires.push({name:"linha "+(geo.tripwires.length+1),line:draft.slice(),direction:$("tdir").value});
+      draft=[];
+    }
+  } else draft.push(p);
+  draw();
+};
+$("cv").ondblclick=e=>{e.preventDefault();if(tool!=="tripwire")closePoly()};
+$("still").onload=draw;
+document.querySelectorAll(".tool").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tool").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");tool=b.dataset.t;draft=[];draw();
+});
+$("cam").onchange=()=>{const c=currentCam();if(c){geo=fromCam(c);$("loiterS").value=geo.loiter_seconds||30;draw()}};
+$("undo").onclick=()=>{draft.pop();draw()};
+$("clear").onclick=()=>{
+  if(tool==="include") geo.include_zones=[];
+  else if(tool==="ignore") geo.ignore_zones=[];
+  else if(tool==="tripwire") geo.tripwires=[];
+  else geo.loiter_zone=[];
+  draft=[];draw();
+};
+$("foto").onclick=async()=>{
+  const id=$("cam").value;$("gmsg").textContent="pedindo um frame…";
+  let r=await api("/v1/preview?id="+id);
+  if(!r.ok){
+    const ev=(await (await api("/v1/events?limit=20")).json()).result||[];
+    const hit=ev.find(e=>String(e.cameraId)===id)||ev[0];
+    if(hit) r=await api("/v1/snapshot?id="+hit.id);
+  }
+  if(!r.ok){$("gmsg").textContent="sem frame (câmera offline?)";return}
+  const b=await r.blob();
+  const prev=imgUrl;imgUrl=URL.createObjectURL(b);$("still").src=imgUrl;if(prev) URL.revokeObjectURL(prev);$("gmsg").textContent="";
+};
+$("saveg").onclick=async()=>{
+  const id=$("cam").value;
+  const body={include_zones:geo.include_zones,ignore_zones:geo.ignore_zones,tripwires:geo.tripwires,
+    loiter_zone:geo.loiter_zone,loiter_seconds:Number($("loiterS").value)||null};
+  const r=await api("/v1/cameras/"+id+"/geometry",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json();
+  $("gmsg").textContent=j.ok?"salvo (câmera reiniciada com as zonas)":(j.error||"erro");
+  if(j.ok) load();
+};
+$("tab-ev").onclick=()=>{tab="ev";$("tab-ev").classList.add("on");$("tab-z").classList.remove("on");load()};
+$("tab-z").onclick=()=>{tab="z";$("tab-z").classList.add("on");$("tab-ev").classList.remove("on");load()};
+$("go").onclick=()=>{token=$("tok").value.trim();sessionStorage.setItem("token",token);load()};
+$("refresh").onclick=load;
+$("arm").onclick=async()=>{await api("/v1/arm",{method:"POST"});load()};
+$("disarm").onclick=async()=>{if(confirm("Desarmar o Guard?")){await api("/v1/disarm",{method:"POST"});load()}};
+$("testn").onclick=async()=>{const r=await api("/v1/test-notification",{method:"POST"});$("gmsg").textContent=r.ok?"aviso de teste enviado":"falhou o teste";};
+load();
+</script></body></html>

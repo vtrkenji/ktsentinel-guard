@@ -1,0 +1,13 @@
+[Unit]
+Description=kTsentinel Guard (detecção de movimento RTSP + FCM)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/ktsentinel-guard/venv/bin/sentinel-guard run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
