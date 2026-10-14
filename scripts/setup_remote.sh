@@ -5,7 +5,7 @@
 set -euo pipefail
 HOST="${1:-note}"
 KEY="${2:-}"
-DVR="${DVR_HOST:-192.168.15.55}"
+DVR="${DVR_HOST:-192.168.0.10}"
 
 read -rp "Usuário do DVR: " DVR_USER
 read -rsp "Senha do DVR: " DVR_PASS; echo

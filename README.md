@@ -1,4 +1,6 @@
 # ktsentinel-guard
+[![CI](https://github.com/vtrkenji/ktsentinel-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/vtrkenji/ktsentinel-guard/actions/workflows/ci.yml)
+
 Detecção de movimento em câmeras RTSP com alertas FCM (Linux)
 
 Daemon `sentinel-guard`: lê o RTSP das câmeras (stream secundário quando existir), detecta

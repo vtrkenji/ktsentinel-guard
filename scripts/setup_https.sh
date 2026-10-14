@@ -4,7 +4,7 @@
 # Depois: no roteador, encaminhe a porta externa (padrão 8443) para <ip-notebook>:8443.
 # Uso: scripts/setup_https.sh [dominio] [porta=8443] [host_ssh=note]
 set -euo pipefail
-DOMAIN="${1:-ktsentinelhubapp.duckdns.org}"
+DOMAIN="${1:-SEU-DOMINIO.duckdns.org}"
 PORT="${2:-8443}"
 HOST="${3:-note}"
 read -rsp "Token do DuckDNS (não aparece na tela): " TOKEN; echo
