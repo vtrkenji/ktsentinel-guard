@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Instala o kTsentinel Guard no Linux (usuário atual, systemd --user).
+# Tudo fica em $HOME — funciona em Fedora Silverblue/Kinoite/Bazzite e outros
+# sistemas imutáveis ( /usr somente leitura ). Não usa apt/dnf.
 # Uso: dentro da pasta extraída do release, rode ./scripts/install.sh
 # Não cria nem pede segredos: depois edite ~/.config/ktsentinel-guard/config.toml
 # e copie a chave Firebase para ~/.config/ktsentinel-guard/fcm-service-account.json.
@@ -10,14 +12,45 @@ VENV="$HOME/.local/share/ktsentinel-guard/venv"
 CONF="$HOME/.config/ktsentinel-guard"
 
 command -v python3 >/dev/null || { echo "python3 não encontrado"; exit 1; }
-python3 -c "import cv2" 2>/dev/null || {
-  echo "OpenCV não encontrado. Instale com: sudo apt install python3-opencv ffmpeg"; exit 1; }
 
 mkdir -p "$VENV" "$CONF" "$HOME/.config/systemd/user"
 chmod 700 "$CONF"
-python3 -m venv --system-site-packages --without-pip "$VENV"
-python3 -m pip --python "$VENV/bin/python" install -q --force-reinstall --no-deps "$SRC"
-python3 -m pip --python "$VENV/bin/python" install -q "$SRC" || true
+
+# OpenCV do sistema (Debian/Fedora tradicional) evita baixar a wheel.
+SYS_CV2=0
+python3 -c "import cv2" 2>/dev/null && SYS_CV2=1
+
+_make_venv() {
+  local extra=()
+  [ "$SYS_CV2" = 1 ] && extra+=(--system-site-packages)
+  if python3 -c "import ensurepip" 2>/dev/null; then
+    python3 -m venv "${extra[@]}" "$VENV"
+    return
+  fi
+  python3 -m venv "${extra[@]}" --without-pip "$VENV"
+  curl -fsSL https://bootstrap.pypa.io/get-pip.py | "$VENV/bin/python" -
+}
+
+if [ ! -x "$VENV/bin/python" ]; then
+  _make_venv
+elif [ "$SYS_CV2" = 1 ]; then
+  # Recria com site-packages do sistema se o venv antigo não enxerga cv2.
+  "$VENV/bin/python" -c "import cv2" 2>/dev/null || _make_venv
+fi
+
+PY="$VENV/bin/python"
+if ! "$PY" -m pip --version >/dev/null 2>&1; then
+  if python3 -c "import ensurepip" 2>/dev/null; then
+    "$PY" -m ensurepip --upgrade
+  else
+    curl -fsSL https://bootstrap.pypa.io/get-pip.py | "$PY" -
+  fi
+fi
+
+"$PY" -m pip install -q --upgrade pip
+"$PY" -m pip install -q --force-reinstall --no-deps "$SRC"
+"$PY" -m pip install -q "$SRC"
+"$PY" -c "import cv2" 2>/dev/null || "$PY" -m pip install -q "opencv-python-headless>=4.8"
 
 if [ ! -f "$CONF/config.toml" ]; then
   cp "$SRC/packaging/config.example.toml" "$CONF/config.toml"

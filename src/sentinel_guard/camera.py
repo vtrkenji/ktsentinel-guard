@@ -24,10 +24,14 @@ class Camera:
     tripwires: list = field(default_factory=list)
     loiter_seconds: float | None = None     # pessoa permanecendo na cena (ou em loiter_zone) por este tempo
     loiter_zone: list = field(default_factory=list)
+    behavior_only: bool | None = None       # None = usa rules.behavior_only; False = avisa pessoa na zona de scan
 
     @property
     def analytics(self) -> bool:
         return bool(self.tripwires) or self.loiter_seconds is not None
+
+    def uses_behavior_only(self, default: bool) -> bool:
+        return default if self.behavior_only is None else self.behavior_only
 
     @property
     def detection_url(self) -> str:
@@ -41,6 +45,8 @@ class Camera:
             self.loiter_seconds = g["loiter_seconds"]
         if "loiter_zone" in g:
             self.loiter_zone = g["loiter_zone"]
+        if "behavior_only" in g:
+            self.behavior_only = g["behavior_only"]
 
     def to_json(self) -> dict:
         """Mesmo formato (camelCase) do modelo Camera do app, sem credenciais."""
@@ -55,4 +61,5 @@ class Camera:
             "tripwires": self.tripwires,
             "loiterSeconds": self.loiter_seconds,
             "loiterZone": self.loiter_zone,
+            "behaviorOnly": self.behavior_only,
         }

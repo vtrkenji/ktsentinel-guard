@@ -1,6 +1,6 @@
 """API HTTP (JSON) para controle remoto. Desligada por padrão; autenticação por token Bearer.
 
-GET  /                     página web (histórico + zonas no notebook; pede o token)
+GET  /                     página web (no notebook, sem token; de fora, Bearer)
 GET  /v1/status            GET  /v1/cameras
 POST /v1/arm               POST /v1/disarm
 POST /v1/test-notification
@@ -14,6 +14,7 @@ PUT  /v1/cameras/{id}/geometry           zonas de scan, ignore, tripwire, loiter
 import hmac
 import json
 import logging
+import socket
 import threading
 import time
 from pathlib import Path
@@ -38,9 +39,24 @@ MAX_FAILS = 5
 LOCKOUT_SECONDS = 300
 
 
-def make_handler(daemon, token: str, trusted_proxies=frozenset({"127.0.0.1"})):
+def machine_ips(*extra: str) -> frozenset[str]:
+    """IPs desta máquina: notebook abre a UI sem colar o token; acesso via proxy (DuckDNS) continua exigindo Bearer."""
+    ips = {"127.0.0.1", "::1", "localhost"}
+    for x in extra:
+        if x:
+            ips.add(x)
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.add(info[4][0])
+    except OSError:
+        pass
+    return frozenset(ips)
+
+
+def make_handler(daemon, token: str, trusted_proxies=frozenset({"127.0.0.1"}), local_ips=None):
     fails: dict[str, list] = {}  # ip -> [contagem, bloqueado_até]
     fails_lock = threading.Lock()
+    local_ips = frozenset(local_ips) if local_ips is not None else machine_ips(*trusted_proxies)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "sentinel-guard"
@@ -63,17 +79,23 @@ def make_handler(daemon, token: str, trusted_proxies=frozenset({"127.0.0.1"})):
             got = self.headers.get("Authorization", "")
             return got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), token)
 
+        def _client(self) -> tuple[str, bool]:
+            peer = self.client_address[0]
+            xff = self.headers.get("X-Forwarded-For")
+            if peer in trusted_proxies and xff:
+                return xff.split(",")[-1].strip(), True
+            return peer, False
+
         def _route(self, method):
             if method == "GET" and urlparse(self.path).path in ("/", "/index.html"):
                 return self._send(200, WEB_PAGE.read_bytes(), "text/html; charset=utf-8")  # sem dados; o token vai no JS
-            ip = self.client_address[0]
-            if ip in trusted_proxies and self.headers.get("X-Forwarded-For"):
-                ip = self.headers["X-Forwarded-For"].split(",")[-1].strip()  # IP real, anexado pelo proxy local
+            ip, via_proxy = self._client()
             with fails_lock:
                 rec = fails.get(ip)
                 if rec and rec[1] > time.monotonic():
                     return self._json(429, {"ok": False, "error": "muitas tentativas; aguarde"})
-            if not self._authorized():
+            local = (not via_proxy) and ip in local_ips
+            if not local and not self._authorized():
                 with fails_lock:
                     rec = fails.setdefault(ip, [0, 0.0])
                     rec[0] += 1
@@ -151,7 +173,9 @@ class ApiServer:
         token = path.read_text().strip()
         if len(token) < 20:
             raise RuntimeError("token da API muito curto")
-        self._httpd = ThreadingHTTPServer((cfg.bind, cfg.port), make_handler(daemon, token, frozenset({"127.0.0.1", cfg.bind})))
+        proxies = frozenset({"127.0.0.1", "::1", cfg.bind})
+        self._httpd = ThreadingHTTPServer(
+            (cfg.bind, cfg.port), make_handler(daemon, token, proxies, machine_ips(cfg.bind)))
         self._httpd.daemon_threads = True
         self.address = self._httpd.server_address
 

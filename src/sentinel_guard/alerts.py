@@ -14,12 +14,18 @@ log = logging.getLogger("sentinel_guard.alerts")
 DVR_PADDING = timedelta(seconds=15)
 
 
-def _annotate(frame, bbox):
+_KIND_LABEL = {"tripwire": "TRIPWIRE", "loiter": "LOITER", "motion": "MOVIMENTO"}
+
+
+def _annotate(frame, bbox, kind: str | None = None):
     img = frame.copy()
+    h, w = img.shape[:2]
     if bbox:
-        h, w = img.shape[:2]
         x, y, bw, bh = bbox
         cv2.rectangle(img, (int(x * w), int(y * h)), (int((x + bw) * w), int((y + bh) * h)), (0, 180, 255), 2)
+    if kind:
+        text = _KIND_LABEL.get(kind, kind.upper())
+        cv2.putText(img, text, (8, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 255), 2, cv2.LINE_AA)
     return img
 
 
@@ -60,10 +66,13 @@ class AlertManager:
         now = self._clock()
         with self._lock:
             ev = self._open.get(camera.id)
+            # Com require_person, lixo de compressão/carro/sombra não entra no histórico.
+            if ev is None and self.rules.require_person and not person:
+                return
             if ev is None:
                 ts = self._now()
                 snap = self.data_dir / "snapshots" / f"cam{camera.id}_{ts:%Y%m%d_%H%M%S}.jpg"
-                cv2.imwrite(str(snap), _annotate(frame, bbox), [cv2.IMWRITE_JPEG_QUALITY, 85])
+                cv2.imwrite(str(snap), _annotate(frame, bbox, "motion"), [cv2.IMWRITE_JPEG_QUALITY, 85])
                 cur = self._db.execute(
                     "INSERT INTO events (camera_id, camera_name, start_ts, snapshot, peak_area_pct) "
                     "VALUES (?,?,?,?,?)",
@@ -79,7 +88,7 @@ class AlertManager:
                 ev.update(peak=area_pct, peak_frame=frame, peak_bbox=bbox)
             ev["peak"] = max(ev["peak"], area_pct)
             if (not ev["decided"] and now - ev["start"] >= self.rules.min_event_seconds
-                    and not self.rules.behavior_only
+                    and not camera.uses_behavior_only(self.rules.behavior_only)
                     and (ev["person"] or not self.rules.require_person)):
                 ev["decided"] = True
                 self._decide(ev, now)
@@ -90,7 +99,7 @@ class AlertManager:
         with self._lock:
             ts = self._now()
             snap = self.data_dir / "snapshots" / f"cam{camera.id}_{ts:%Y%m%d_%H%M%S}_{kind}.jpg"
-            cv2.imwrite(str(snap), _annotate(frame, bbox), [cv2.IMWRITE_JPEG_QUALITY, 85])
+            cv2.imwrite(str(snap), _annotate(frame, bbox, kind), [cv2.IMWRITE_JPEG_QUALITY, 85])
             cur = self._db.execute(
                 "INSERT INTO events (camera_id, camera_name, start_ts, end_ts, snapshot, peak_snapshot, person, kind) "
                 "VALUES (?,?,?,?,?,?,1,?)",
@@ -147,13 +156,14 @@ class AlertManager:
         ev = self._open.pop(cid)
         end_ts = ev["start_ts"] + timedelta(seconds=max(0.0, ev["last"] - ev["start"]))
         peak_snap = self.data_dir / "snapshots" / f"cam{cid}_{ev['start_ts']:%Y%m%d_%H%M%S}_peak.jpg"
-        cv2.imwrite(str(peak_snap), _annotate(ev["peak_frame"], ev["peak_bbox"]), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        cv2.imwrite(str(peak_snap), _annotate(ev["peak_frame"], ev["peak_bbox"], ev.get("kind", "motion")),
+                    [cv2.IMWRITE_JPEG_QUALITY, 85])
         sets = "end_ts=?, peak_area_pct=?, peak_snapshot=?, person=?"
         vals = [end_ts.isoformat(timespec="seconds"), ev["peak"], str(peak_snap), int(ev["person"])]
         if not ev["decided"]:
             long_enough = ev["last"] - ev["start"] >= self.rules.min_event_seconds
             sets += ", reason=?"
-            if self.rules.behavior_only and ev["person"] and long_enough:
+            if ev["camera"].uses_behavior_only(self.rules.behavior_only) and ev["person"] and long_enough:
                 reason = "so_registro"
             else:
                 reason = "sem_pessoa" if self.rules.require_person and not ev["person"] and long_enough else "curto"

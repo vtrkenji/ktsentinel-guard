@@ -47,10 +47,12 @@ class FakeDaemon:
         return {"id": int(camera_id), "ok": True}
 
 
-def call(base, path, method="GET", token=TOKEN):
+def call(base, path, method="GET", token=TOKEN, forwarded=None):
     req = urllib.request.Request(base + path, method=method, data=b"" if method == "POST" else None)
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    if forwarded:
+        req.add_header("X-Forwarded-For", forwarded)
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, r.headers["Content-Type"], r.read()
@@ -75,8 +77,9 @@ def test_api(tmp_path):
     api.start()
     base = f"http://127.0.0.1:{api.address[1]}"
     try:
-        assert call(base, "/v1/status", token=None)[0] == 401
-        assert call(base, "/v1/status", token="x" * 40)[0] == 401
+        assert call(base, "/v1/status", token=None)[0] == 200  # neste PC não pede token
+        assert call(base, "/v1/status", token=None, forwarded="203.0.113.9")[0] == 401
+        assert call(base, "/v1/status", token="x" * 40, forwarded="203.0.113.9")[0] == 401
         code, _, body = call(base, "/v1/status")
         assert code == 200 and json.loads(body)["result"] == {"armed": True}
         assert json.loads(call(base, "/v1/disarm", "POST")[2])["result"] == {"armed": False} and not d.armed
@@ -121,7 +124,7 @@ def test_web_page_is_public(tmp_path):
     try:
         code, ctype, body = call(f"http://127.0.0.1:{api.address[1]}", "/", token=None)
         assert code == 200 and ctype.startswith("text/html") and b"kTsentinel Guard" in body
-        assert b"Zonas" in body and TOKEN.encode() not in body
+        assert b"Zonas" in body and b"Agenda" in body and TOKEN.encode() not in body
     finally:
         api.close()
 
@@ -135,10 +138,11 @@ def test_lockout_after_failures(tmp_path):
     api.start()
     base = f"http://127.0.0.1:{api.address[1]}"
     try:
-        codes = [call(base, "/v1/status", token="x" * 40)[0] for _ in range(5)]
+        ext = "203.0.113.9"
+        codes = [call(base, "/v1/status", token="x" * 40, forwarded=ext)[0] for _ in range(5)]
         assert codes == [401] * 5
-        assert call(base, "/v1/status", token="x" * 40)[0] == 429
-        assert call(base, "/v1/status")[0] == 429  # bloqueado mesmo com token certo
+        assert call(base, "/v1/status", token="x" * 40, forwarded=ext)[0] == 429
+        assert call(base, "/v1/status", forwarded=ext)[0] == 429  # bloqueado mesmo com token certo
     finally:
         api.close()
 

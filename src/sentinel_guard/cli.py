@@ -14,6 +14,8 @@ def _load(args):
 
 
 def cmd_run(args):
+    import os
+    os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;15000000")
     from .daemon import Daemon
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     return Daemon(Path(args.config)).run()
@@ -138,7 +140,8 @@ def cmd_events(args):
         day, t0 = e["start"].split("T")
         t1 = (e["end"] or e["start"]).split("T")[1]
         status = "notificado" if e["notified"] else (e["reason"] or "pendente")
-        print(f"#{e['id']:<4} {day} {t0[:8]}–{t1[:8]}  {e['cameraName']:<10} pico {e['peakAreaPct'] or 0:5.1f}%  "
+        kind = e.get("kind") or "motion"
+        print(f"#{e['id']:<4} {day} {t0[:8]}–{t1[:8]}  {e['cameraName']:<10} {kind:<9} pico {e['peakAreaPct'] or 0:5.1f}%  "
               f"{status:<17} DVR: {e['dvrWindow'][0]}–{e['dvrWindow'][1]}")
         print(f"      {e['peakSnapshot'] or e['snapshot']}")
     return 0

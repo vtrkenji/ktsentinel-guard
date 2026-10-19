@@ -3,6 +3,9 @@ import os
 import threading
 import time
 
+# Antes de importar cv2: TCP + 15s (DVR AITEK costuma passar de 5s).
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;15000000")
+
 import cv2
 
 from .camera import Camera, redact_url
@@ -10,9 +13,6 @@ from .config import DetectionConfig
 from .detector import MotionDetector
 from .person import load_person_detector
 from .tracker import Tracker, crossing, point_in_polygon
-
-# TCP e timeout de 5s; precisa estar no ambiente antes do primeiro VideoCapture
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;5000000")
 
 log = logging.getLogger("sentinel_guard.capture")
 
@@ -153,29 +153,31 @@ class CameraWorker(threading.Thread):
         tracker = Tracker()
         hits = 0
         last_analytics = 0.0
-        interval = 1.0 / self.det_cfg.fps
+        motion_until = 0.0
+        interval = 1.0 / max(self.det_cfg.fps, 0.5)
         next_due = 0.0
         was_armed = False
         while not self._stop_evt.is_set():
+            now = time.monotonic()
+            want_preview = self._want_preview.is_set()
+            if not want_preview and now < next_due:
+                if self._stop_evt.wait(min(0.2, next_due - now)):
+                    break
+                continue
             if not cap.grab():
                 return
             now = time.monotonic()
             self.last_frame_at = now
             armed = self.is_armed()
-            need_frame = armed or self._want_preview.is_set()
-            if not need_frame:
-                if now < next_due:
-                    continue
+            if not armed and not want_preview:
                 was_armed = False
                 self.alerts.tick()
                 next_due = now + 0.5
                 continue
-            if now < next_due and not self._want_preview.is_set():
-                continue
             ok, frame = cap.retrieve()
             if not ok:
                 return
-            if self._want_preview.is_set():
+            if want_preview:
                 self._store_preview(frame)
             if not armed:
                 was_armed = False
@@ -184,12 +186,20 @@ class CameraWorker(threading.Thread):
             self.alerts.tick()
             if not was_armed:
                 det.reset()
+                tracker = Tracker()
                 was_armed = True
             next_due = now + interval
-            if person_ok and self.camera.analytics and now - last_analytics >= 0.5:
-                last_analytics = now
-                self._analyze(frame, now, tracker)
-            if det.process(frame):
+            moved = det.process(frame)
+            # DNN só com movimento (e uns segundos depois, para o pé cruzar o tripwire).
+            if person_ok and self.camera.analytics:
+                if moved:
+                    motion_until = now + 12.0
+                if now <= motion_until and now - last_analytics >= 0.5:
+                    last_analytics = now
+                    self._analyze(frame, now, tracker)
+                elif now > motion_until:
+                    tracker = Tracker()
+            if moved:
                 self.motion_events += 1
                 bbox, person = det.last_bbox, False
                 if person_ok and now - last_person_check >= self.det_cfg.person_check_seconds:

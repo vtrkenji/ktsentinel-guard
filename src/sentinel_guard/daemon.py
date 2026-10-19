@@ -1,6 +1,7 @@
 import json
 import logging
 import signal
+import time
 from datetime import datetime
 import threading
 
@@ -116,7 +117,9 @@ class Daemon:
             self.workers = [
                 CameraWorker(c, self.cfg.detection, self.alerts, self.is_armed)
                 for c in self.cfg.cameras if c.is_active]
-            for w in self.workers:
+            for i, w in enumerate(self.workers):
+                if i:
+                    time.sleep(2.0)
                 w.start()
             log.info("%d câmera(s) ativa(s); armado=%s", len(self.workers), self.armed)
 
@@ -280,6 +283,11 @@ class Daemon:
                 "tripwires": geo["tripwires"], "loiter_seconds": geo["loiter_seconds"],
                 "loiter_zone": geo["loiter_zone"],
             }
+            if "behavior_only" in geo:
+                if geo["behavior_only"] is None:
+                    saved[str(cid)].pop("behavior_only", None)
+                else:
+                    saved[str(cid)]["behavior_only"] = geo["behavior_only"]
             path = self._geometry_file()
             path.write_text(json.dumps(saved))
             path.chmod(0o600)

@@ -12,17 +12,22 @@ Zonas (área de scan, ignore, tripwire, loiter) desenham-se no **notebook**, num
 celular e não em vídeo ao vivo, para não gastar CPU extra. O app Flutter só opera o alarme depois.
 
 ## Instalação (notebook)
-Atalho: baixe `ktsentinel-guard-linux.tar.gz` em Releases, extraia e rode `./scripts/install.sh`. Manual:
+Atalho: baixe `ktsentinel-guard-linux.tar.gz` em Releases, extraia e rode `./scripts/install.sh`.
+Instala só em `$HOME` (venv + unit systemd --user). Em Fedora Silverblue/Kinoite/Bazzite e outros
+sistemas com `/usr` somente leitura, o script baixa o OpenCV via pip — não use `dnf`/`apt`.
+
+Manual:
 ```
-python3 -m venv --system-site-packages ~/.local/share/ktsentinel-guard/venv   # OpenCV do sistema
-~/.local/share/ktsentinel-guard/venv/bin/pip install .
+python3 -m venv ~/.local/share/ktsentinel-guard/venv
+~/.local/share/ktsentinel-guard/venv/bin/pip install . opencv-python-headless
 mkdir -p ~/.config/ktsentinel-guard && chmod 700 ~/.config/ktsentinel-guard
 cp packaging/config.example.toml ~/.config/ktsentinel-guard/config.toml && chmod 600 ~/.config/ktsentinel-guard/config.toml
 # chave de service account do Firebase: copie para ~/.config/ktsentinel-guard/fcm-service-account.json (chmod 600)
 cp packaging/sentinel-guard.service ~/.config/systemd/user/ && systemctl --user enable --now sentinel-guard
 ```
-Sem `python3-venv` (Debian/Mint): `python3 -m venv --system-site-packages --without-pip VENV` e
-`pip --python VENV/bin/python install .`.
+Se o OpenCV já vier do sistema (Debian/Fedora tradicional), pode criar o venv com
+`--system-site-packages` e omitir `opencv-python-headless`. Sem `ensurepip`:
+`python3 -m venv --without-pip VENV` e `curl -fsSL https://bootstrap.pypa.io/get-pip.py | VENV/bin/python`.
 
 ## Comandos
 `sentinel-guard [--config PATH] <cmd>`: `run`, `check-config`, `gen-topic`, `test-fcm [--dry-run]`,
@@ -80,11 +85,12 @@ no limite de notificações por hora.
 
 ## Ver snapshots e histórico pelo navegador
 
-Com `[api]` habilitado, abra `http://<ip-do-notebook>:8765/` e informe o token (`~/.config/ktsentinel-guard/api-token`).
-**Eventos**: histórico e snapshot. **Zonas**: uma foto do stream (não live) para desenhar scan, ignore,
-tripwire e loiter; grava `geometry.json` no data dir (sobrepõe o TOML). Armar/desarmar e testar FCM no
-cabeçalho. O token fica só na sessão do navegador. Isso no notebook gasta bem menos que um editor no
-celular (sem segundo decoder de RTSP).
+Com `[api]` habilitado, no notebook abra `http://<ip-do-notebook>:8765/` — neste PC não pede token. De fora (DuckDNS) o token (`~/.config/ktsentinel-guard/api-token`) é pedido uma vez e fica no navegador.
+O indicador **ON/OFF** no topo mostra se está vigindo agora (verde), armado fora da agenda (âmbar) ou
+desarmado (cinza). **Início**: câmeras online e sensores. **Zonas**: foto do stream (não live) para
+desenhar scan, ignore, tripwire e loiter. **Agenda**: dias e horários. **Eventos**: histórico.
+**Ajustes**: avisos, sensibilidade, retenção. Zonas gravam `geometry.json` (sobrepõe o TOML). O token
+fica só na sessão do navegador.
 
 Para acessar de fora de casa sem expor nada na internet: instale o Tailscale no notebook (`sudo tailscale up`)
 e no celular, e troque `bind` para o IP Tailscale do notebook (`tailscale ip -4`) ou `0.0.0.0` com firewall.

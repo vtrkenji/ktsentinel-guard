@@ -1,79 +1,228 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>kTsentinel Guard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 <style>
-body{margin:0;background:#070C12;color:#eee;font-family:system-ui,sans-serif}
-header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:#0d1520;position:sticky;top:0;z-index:2}
-h1{font-size:18px;margin:0;color:#F5B62E;flex:1}
-button,input,select{background:#1a2535;color:#eee;border:1px solid #2a3a50;border-radius:6px;padding:8px 12px}
-button.on,button.tool.on{background:#E5B14D;color:#070C12;border-color:#E5B14D}
+:root{--bg:#08090b;--card:#101A22;--line:#1c2730;--txt:#E7EDF2;--dim:#8897A6;--gold:#F5B62E;--on:#65e6a4;--pause:#F5B62E;--off:#5a6a7e;--bad:#ff5d5d}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 50% -20%,rgba(245,182,46,.08),transparent 35%),var(--bg);color:var(--txt);font-family:Inter,system-ui,sans-serif}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:rgba(14,16,19,.86);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.06);position:sticky;top:0;z-index:3}
+.brand{line-height:1}.brand b{font-family:"Space Grotesk",sans-serif;font-size:18px;font-weight:700}
+.brand b i{color:var(--gold);font-style:normal}.brand small{display:block;font-family:"DM Mono",monospace;font-size:8px;letter-spacing:.28em;color:#71717a;margin-top:4px}
+button,input,select{background:#1a2535;color:var(--txt);border:1px solid #2a3a50;border-radius:8px;padding:8px 12px;font:inherit}
+button{cursor:pointer}button:hover{border-color:var(--gold)}
+button.primary{background:var(--gold);color:#070C12;border-color:var(--gold);font-weight:600}
+button.tool.on,button.mode.on,button.tab.on,#days button.on{background:var(--gold);color:#070C12;border-color:var(--gold)}
+.pill{display:flex;align-items:center;gap:10px;padding:6px 14px 6px 10px;border-radius:999px;border:1px solid var(--line);min-width:9.5rem}
+.pill .orb{width:14px;height:14px;border-radius:50%;background:var(--off);box-shadow:0 0 0 3px #ffffff10}
+.pill.on{border-color:#2e6a48}.pill.on .orb{background:var(--on);box-shadow:0 0 12px var(--on)}
+.pill.pause{border-color:#6a5420}.pill.pause .orb{background:var(--pause);box-shadow:0 0 10px #F5B62E88}
+.pill.off .orb{background:var(--off)}
+.pill b{font-size:15px;letter-spacing:.08em}
+.pill small{display:block;color:var(--dim);font-weight:400;letter-spacing:0;font-size:11px}
+.sw{width:48px;height:28px;border-radius:999px;background:#2a3a50;border:none;position:relative;padding:0;flex-shrink:0}
+.sw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#c5d0dc;transition:left .15s,background .15s}
+.sw.on{background:#1e5c38}.sw.on i{left:23px;background:var(--on)}
 #warn{background:#3a1a1a;color:#ffb4b4;padding:8px 16px;display:none;font-size:14px}
-#tabs{display:flex;gap:4px;padding:8px 16px}
-#tabs button{opacity:.7}#tabs button.on{opacity:1}
-#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px}
-.card{background:#0d1520;border-radius:8px;overflow:hidden}.card img{width:100%;display:block;cursor:pointer}
-.meta{padding:8px 10px;font-size:13px}.tag{color:#E5B14D}.dim{color:#8a99ad}
-#login,#zones{padding:16px;max-width:960px;margin:auto}
-#stage{position:relative;display:inline-block;max-width:100%;line-height:0;background:#000}
+nav{display:flex;gap:4px;padding:8px 16px;border-bottom:1px solid var(--line)}
+nav button{opacity:.7}nav button.on{opacity:1}
+.page{padding:16px;max-width:1100px;margin:auto}
+.hidden{display:none!important}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card img{width:100%;display:block;cursor:pointer;aspect-ratio:16/10;object-fit:cover;background:#000}
+.meta{padding:10px 12px;font-size:13px}.tag{color:var(--gold)}.dim{color:var(--dim)}
+.cams{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.cam{padding:14px;display:flex;flex-direction:column;gap:8px}
+.cam h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--off);flex-shrink:0}
+.dot.online{background:var(--on);box-shadow:0 0 8px var(--on)}
+.dot.error{background:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:3px 8px;border-radius:999px;background:#1a2535;color:var(--dim);border:1px solid var(--line)}
+#stage{position:relative;display:inline-block;max-width:100%;line-height:0;background:#000;border-radius:8px;overflow:hidden;user-select:none}
 #stage img,#stage canvas{max-width:100%;height:auto;display:block}
-#stage canvas{position:absolute;left:0;top:0;width:100%;height:100%;cursor:crosshair}
+#stage img{pointer-events:none}
+#stage canvas{position:absolute;left:0;top:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
 .tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;align-items:center}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px}
+.win{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px;margin:8px 0}
+#days button{padding:6px 8px;min-width:2.4em}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+label.stack{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--dim)}
+input[type=range]{width:160px;accent-color:var(--gold)}
+.timeline{display:grid;grid-template-columns:2.4em 1fr;gap:6px 10px;align-items:center;margin-top:16px}
+.bar{height:10px;background:#1a2535;border-radius:6px;position:relative;overflow:hidden}
+.seg{position:absolute;top:0;height:100%;background:#2e6a48}
+.now{position:absolute;top:-3px;width:2px;height:16px;background:var(--gold)}
+#login{max-width:420px;margin:48px auto;padding:24px}
 </style></head><body>
-<header><h1>kTsentinel Guard</h1><span id="state" class="dim"></span>
-<button id="arm">Armar</button><button id="disarm">Desarmar</button>
-<button id="testn">Testar aviso</button><button id="refresh">Atualizar</button></header>
+<header>
+  <div class="brand"><b><i>kT</i>sentinel</b><small>GUARD · LOCAL</small></div>
+  <div id="pill" class="pill off" title="estado do alarme">
+    <span class="orb"></span>
+    <div><b id="pillL">—</b><small id="pillS">conectando</small></div>
+  </div>
+  <button type="button" id="armSw" class="sw" title="Armar / desarmar" aria-label="Armar"><i></i></button>
+  <span style="flex:1"></span>
+  <button type="button" id="testn">Testar aviso</button>
+  <button type="button" id="refresh">Atualizar</button>
+</header>
 <div id="warn"></div>
-<div id="tabs"><button id="tab-ev" class="on">Eventos</button><button id="tab-z">Zonas</button></div>
-<div id="login" hidden><p>Token da API:</p><input id="tok" type="password" style="width:100%"><p><button id="go">Entrar</button></p><p id="err" style="color:#ff6b6b"></p></div>
-<div id="grid"></div>
-<div id="zones" hidden>
-<p class="dim">Desenhe no notebook em cima de <b>uma foto</b> (não é vídeo ao vivo). Scan = onde vigia; ignore = rua/relógio; tripwire = cruzou a linha; loiter = pessoa parada.</p>
-<div class="tools">
-<select id="cam"></select>
-<button type="button" id="foto">Tirar foto</button>
-<button type="button" class="tool on" data-t="include"><span class="swatch" style="background:#3c3"></span>Scan</button>
-<button type="button" class="tool" data-t="ignore"><span class="swatch" style="background:#e44"></span>Ignorar</button>
-<button type="button" class="tool" data-t="tripwire"><span class="swatch" style="background:#4cf"></span>Tripwire</button>
-<button type="button" class="tool" data-t="loiter"><span class="swatch" style="background:#fc0"></span>Loiter</button>
-<label class="dim">Loiter s <input id="loiterS" type="number" min="0" value="30" style="width:4.5em"></label>
-<label class="dim">Dir <select id="tdir"><option value="both">ambas</option><option value="ab">A→B</option><option value="ba">B→A</option></select></label>
-<button type="button" id="undo">Desfazer ponto</button>
-<button type="button" id="clear">Limpar ferramenta</button>
-<button type="button" id="saveg">Salvar</button>
+<nav id="tabs" class="hidden">
+  <button type="button" class="tab on" data-t="home">Início</button>
+  <button type="button" class="tab" data-t="z">Zonas</button>
+  <button type="button" class="tab" data-t="sch">Agenda</button>
+  <button type="button" class="tab" data-t="ev">Eventos</button>
+  <button type="button" class="tab" data-t="set">Ajustes</button>
+</nav>
+<div id="login">
+  <p>Neste notebook a tela abre sozinha. De fora (DuckDNS), cole o token uma vez — fica salvo neste navegador.</p>
+  <input id="tok" type="password" style="width:100%" autocomplete="off" placeholder="token da API">
+  <p><button type="button" class="primary" id="go">Entrar</button></p>
+  <p id="err" style="color:#ff6b6b"></p>
 </div>
-<p id="hint" class="dim">Scan/ignorar/loiter: clique os cantos, depois duplo-clique para fechar. Tripwire: dois cliques.</p>
-<div id="stage"><img id="still" alt=""><canvas id="cv"></canvas></div>
-<p id="gmsg" class="dim"></p>
+<div id="home" class="page hidden">
+  <div id="cams" class="cams"></div>
+</div>
+<div id="zones" class="page hidden">
+  <p class="dim">A foto da câmera carrega sozinha (um snapshot, não vídeo). Desenhe scan, ignore, tripwire e loiter em cima dela. <b>Nova foto</b> pega outro frame.</p>
+  <div class="tools">
+    <select id="cam"></select>
+    <button type="button" id="foto">Nova foto</button>
+    <button type="button" class="tool on" data-t="include"><span class="swatch" style="background:#3c3"></span>Scan</button>
+    <button type="button" class="tool" data-t="ignore"><span class="swatch" style="background:#e44"></span>Ignorar</button>
+    <button type="button" class="tool" data-t="tripwire"><span class="swatch" style="background:#4cf"></span>Tripwire</button>
+    <button type="button" class="tool" data-t="loiter"><span class="swatch" style="background:#fc0"></span>Loiter</button>
+    <span class="dim">Desenho</span>
+    <button type="button" class="mode on" data-m="rect">Retângulo</button>
+    <button type="button" class="mode" data-m="points">Pontos</button>
+    <label class="dim">Loiter s <input id="loiterS" type="number" min="3" value="30" style="width:4.5em"></label>
+    <label class="dim">Dir <select id="tdir"><option value="both">ambas</option><option value="ab">A→B</option><option value="ba">B→A</option></select></label>
+    <label class="dim">Aviso <select id="camBO">
+      <option value="inherit">seguir global</option>
+      <option value="true">só tripwire/loiter</option>
+      <option value="false">pessoa na scan também</option>
+    </select></label>
+    <button type="button" id="undo">Desfazer</button>
+    <button type="button" id="clear">Limpar ferramenta</button>
+    <button type="button" class="primary" id="saveg">Salvar zonas</button>
+  </div>
+  <p id="hint" class="dim">Retângulo: clique e arraste. Pontos: clique a clique (tripwire = 2 cliques; zonas = cantos e duplo-clique para fechar).</p>
+  <div id="stage"><img id="still" alt=""><canvas id="cv"></canvas></div>
+  <p id="gmsg" class="dim"></p>
+</div>
+<div id="sch" class="page hidden">
+  <div class="row">
+    <div><b>Usar horários</b><div class="dim">Desligado = vigia sempre que estiver armado.</div></div>
+    <button type="button" id="schEn" class="sw" aria-label="Usar horários"><i></i></button>
+  </div>
+  <div id="wins"></div>
+  <p><button type="button" id="addWin">+ janela</button>
+     <button type="button" class="primary" id="saveSch">Salvar agenda</button></p>
+  <p id="schMsg" class="dim"></p>
+  <div id="tl" class="timeline"></div>
+</div>
+<div id="ev" class="page hidden"><div id="grid"></div></div>
+<div id="set" class="page hidden">
+  <div class="row"><div><b>Enviar avisos</b><div class="dim">Desligado só registra no histórico.</div></div>
+    <button type="button" id="s-notify" class="sw" data-k="notify"><i></i></button></div>
+  <div class="row"><div><b>Exigir pessoa</b><div class="dim">Ignora carro, sombra e compressão.</div></div>
+    <button type="button" id="s-requirePerson" class="sw" data-k="requirePerson"><i></i></button></div>
+  <div class="row"><div><b>Só tripwire / loiter</b><div class="dim">Pessoa na área de scan não dispara (global).</div></div>
+    <button type="button" id="s-behaviorOnly" class="sw" data-k="behaviorOnly"><i></i></button></div>
+  <div class="row"><label class="stack">Sensibilidade <span id="sensV"></span>
+    <input id="s-sensitivity" type="range" min="1" max="10"></label></div>
+  <div class="row"><label class="stack">Confirmações de pessoa
+    <input id="s-personMinHits" type="number" min="1" max="5" style="width:5em"></label>
+    <label class="stack">Cooldown (s)
+    <input id="s-cooldownSeconds" type="number" min="10" max="600" style="width:6em"></label>
+    <label class="stack">Avisos / hora
+    <input id="s-maxNotificationsPerHour" type="number" min="1" max="60" style="width:5em"></label></div>
+  <div class="row"><label class="stack">Guardar eventos (dias)
+    <input id="s-keepDays" type="number" min="1" max="90" style="width:5em"></label>
+    <label class="stack">Teto das fotos (MB)
+    <input id="s-maxSnapshotsMb" type="number" min="50" max="5000" style="width:6em"></label></div>
+  <p><button type="button" class="primary" id="saveSet">Salvar ajustes</button></p>
+  <p id="setMsg" class="dim"></p>
 </div>
 <script>
 const $=id=>document.getElementById(id);
-let token=sessionStorage.getItem("token")||"";
-let tab="ev", tool="include", draft=[], geo=emptyGeo(), cams=[], imgUrl=null;
+const DAYS=["seg","ter","qua","qui","sex","sáb","dom"];
 const kinds={tripwire:"Tripwire",loiter:"Loitering",motion:"Movimento"};
-const col={include:"#33cc33",ignore:"#ee4444",tripwire:"#44ccff",loiter:"#ffcc00",draft:"#E5B14D"};
+const col={include:"#65e6a4",ignore:"#ff5d5d",tripwire:"#44ccff",loiter:"#F5B62E",draft:"#F5B62E"};
+let token=localStorage.getItem("ktsentinel-token")||sessionStorage.getItem("token")||"";
+let tab="home", tool="include", draft=[], drag=null, geo=emptyGeo(), cams=[], imgUrl=null, stillCam=null, stillPinned=false, authed=false, st=null, sched={enabled:false,windows:[]};
+let drawMode={include:"rect",ignore:"rect",loiter:"rect",tripwire:"points"};
+try{Object.assign(drawMode, JSON.parse(localStorage.getItem("ktsentinel-drawmode")||"{}"))}catch(e){}
 const api=(p,o={})=>fetch(p,{...o,headers:{Authorization:"Bearer "+token,...(o.headers||{})}});
-function emptyGeo(){return {include_zones:[],ignore_zones:[],tripwires:[],loiter_zone:[],loiter_seconds:null}}
+function emptyGeo(){return {include_zones:[],ignore_zones:[],tripwires:[],loiter_zone:[],loiter_seconds:null,behavior_only:null}}
 function fromCam(c){
   return {include_zones:c.includeZones||[],ignore_zones:c.ignoreZones||[],tripwires:c.tripwires||[],
-    loiter_zone:c.loiterZone||[],loiter_seconds:c.loiterSeconds||null};
+    loiter_zone:c.loiterZone||[],loiter_seconds:c.loiterSeconds||null,
+    behavior_only:c.behaviorOnly===undefined?null:c.behaviorOnly};
 }
-async function load(){
-  if(!token){$("login").hidden=false;return}
+function setSw(el,on){el.classList.toggle("on",!!on)}
+function msg(id,t){$(id).textContent=t||""}
+
+function setPill(){
+  const p=$("pill"), on=st&&st.scheduleActive, armed=st&&st.armed;
+  p.className="pill "+(on?"on":armed?"pause":"off");
+  $("pillL").textContent=on?"ON":armed?"PAUSA":"OFF";
+  $("pillS").textContent=on?"vigindo agora":armed?"armado, fora da agenda":"desarmado";
+  setSw($("armSw"), armed);
+}
+function camCard(c){
+  const d=document.createElement("div");d.className="card cam";
+  const nTw=(c.tripwires||[]).length, lo=c.loiterSeconds, sc=(c.includeZones||[]).length;
+  const age=c.lastFrameAgeSeconds==null?"—":c.lastFrameAgeSeconds+"s";
+  d.innerHTML=`<h3><span class="dot ${c.state||""}"></span>${c.name||("Câmera "+c.id)}</h3>
+    <div class="dim">${c.state||"?"} · frame ${age}${c.lastError?" · "+c.lastError:""}</div>
+    <div class="chips">
+      <span class="chip">${nTw} tripwire</span>
+      <span class="chip">${lo?("loiter "+lo+"s"):"sem loiter"}</span>
+      <span class="chip">${sc?"scan desenhado":"scan = quadro todo"}</span>
+    </div>`;
+  return d;
+}
+async function loadStatus(){
   const s=await api("/v1/status");
-  if(s.status==401||s.status==429){sessionStorage.removeItem("token");token="";$("login").hidden=false;$("err").textContent=s.status==429?"Muitas tentativas. Aguarde 5 minutos.":"Token inválido.";return}
-  $("err").textContent="";$("login").hidden=true;
-  const st=(await s.json()).result;
-  $("state").textContent=(st.scheduleActive?"vigindo":(st.armed?"armado, fora da agenda":"desarmado"))
-    +" · pessoa "+(st.personModel||"?");
+  if(s.status==401||s.status==429){
+    localStorage.removeItem("ktsentinel-token");sessionStorage.removeItem("token");token="";authed=false;
+    $("login").classList.remove("hidden");$("tabs").classList.add("hidden");
+    ["home","zones","sch","ev","set"].forEach(id=>$(id).classList.add("hidden"));
+    $("err").textContent=s.status==429?"Muitas tentativas. Aguarde 5 minutos.":"Token inválido.";
+    return false;
+  }
+  authed=true;
+  $("err").textContent="";$("login").classList.add("hidden");$("tabs").classList.remove("hidden");
+  st=(await s.json()).result;
+  cams=st.cameras||[];
+  setPill();
   const w=st.warnings||[];
   $("warn").style.display=w.length?"block":"none";
   $("warn").textContent=w.join(" · ");
-  cams=st.cameras||[];
-  if(tab==="ev") await loadEvents(); else fillCams();
+  return true;
+}
+function showTab(){
+  ["home","zones","sch","ev","set"].forEach(id=>$(id).classList.toggle("hidden", id!==(tab==="z"?"zones":tab)));
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("on", b.dataset.t===tab));
+}
+async function load(){
+  if(!await loadStatus()) return;
+  showTab();
+  if(tab==="home"){
+    const box=$("cams");box.innerHTML="";
+    cams.forEach(c=>box.append(camCard(c)));
+    if(!cams.length) box.innerHTML='<p class="dim">Nenhuma câmera ativa.</p>';
+  } else if(tab==="ev") await loadEvents();
+  else if(tab==="z"){ fillCams(); await loadStill(); }
+  else if(tab==="sch") await loadSch();
+  else if(tab==="set") await loadSet();
 }
 async function loadEvents(){
-  $("grid").hidden=false;$("zones").hidden=true;
   const ev=(await (await api("/v1/events?limit=60")).json()).result;
   const g=$("grid");g.innerHTML="";
   for(const e of ev){
@@ -84,21 +233,67 @@ async function loadEvents(){
     const m=document.createElement("div");m.className="meta";
     const win=e.dvrWindow?`<br><span class="dim">DVR: ${e.dvrWindow.start||e.dvrWindow[0]||""} – ${e.dvrWindow.end||e.dvrWindow[1]||""}</span>`:"";
     m.innerHTML=`<b>${e.cameraName}</b> <span class="tag">${e.person?"pessoa · ":""}${kinds[e.kind]||e.kind}</span><br>${e.start.replace("T"," ").slice(0,19)}<br><span class="dim">${e.notified?"notificado":(e.reason||"")}</span>${win}`;
-    c.append(img,m);g.append(c);
+    const use=document.createElement("button");use.type="button";use.textContent="usar nas zonas";
+    use.style.margin="0 12px 12px";use.onclick=()=>useEventStill(e);
+    c.append(img,m,use);g.append(c);
   }
+  if(!ev.length) g.innerHTML='<p class="dim">Nenhum evento ainda.</p>';
 }
 function fillCams(){
-  $("grid").hidden=true;$("zones").hidden=false;
   const sel=$("cam");const keep=sel.value;
   sel.innerHTML=cams.map(c=>`<option value="${c.id}">${c.id}: ${c.name} (${c.state||"?"})</option>`).join("");
   if(keep) sel.value=keep;
   const c=cams.find(x=>String(x.id)===sel.value);
-  if(c){geo=fromCam(c);$("loiterS").value=geo.loiter_seconds||30;draw()}
+  if(c) applyCam(c);
+}
+function applyCam(c){
+  geo=fromCam(c);$("loiterS").value=geo.loiter_seconds||30;
+  $("camBO").value=geo.behavior_only===null||geo.behavior_only===undefined?"inherit":String(geo.behavior_only);
+  draw();
+}
+function showBlob(b){
+  const prev=imgUrl;imgUrl=URL.createObjectURL(b);$("still").src=imgUrl;if(prev) URL.revokeObjectURL(prev);
+}
+async function loadStill(force=false){
+  const id=$("cam").value;
+  if(!id){msg("gmsg","escolha uma câmera");return}
+  if(!force && stillCam===id && imgUrl) return;
+  msg("gmsg","carregando snapshot da câmera…");
+  let r=await api("/v1/preview?id="+id), src="frame atual";
+  if(!r.ok){
+    const ev=(await (await api("/v1/events?limit=40")).json()).result||[];
+    const hit=ev.find(e=>String(e.cameraId)===String(id))||ev[0];
+    if(hit){ r=await api("/v1/snapshot?id="+hit.id); src="último evento"; }
+  }
+  if(!r.ok){msg("gmsg","sem snapshot (câmera offline e sem eventos)");stillCam=null;return}
+  showBlob(await r.blob());stillCam=id;stillPinned=false;
+  msg("gmsg","desenhe os limites em cima deste snapshot ("+src+")");
+}
+async function useEventStill(e){
+  tab="z"; showTab(); fillCams();
+  if(e.cameraId!=null) $("cam").value=String(e.cameraId);
+  const c=currentCam(); if(c) applyCam(c);
+  msg("gmsg","carregando snapshot do evento…");
+  const r=await api("/v1/snapshot?id="+e.id);
+  if(!r.ok){msg("gmsg","snapshot do evento indisponível");return}
+  showBlob(await r.blob());stillCam=String(e.cameraId||$("cam").value);stillPinned=true;
+  msg("gmsg","snapshot do evento #"+e.id+" — desenhe os limites e salve");
 }
 function currentCam(){return cams.find(x=>String(x.id)===$("cam").value)}
 function pt(e){
   const r=$("cv").getBoundingClientRect();
   return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)), Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))];
+}
+function rectPoly(a,b){
+  const x0=Math.min(a[0],b[0]), x1=Math.max(a[0],b[0]);
+  const y0=Math.min(a[1],b[1]), y1=Math.max(a[1],b[1]);
+  return [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+}
+function gateLine(poly){
+  const xs=poly.map(p=>p[0]), ys=poly.map(p=>p[1]);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  if((y1-y0)>=(x1-x0)){const m=(x0+x1)/2; return [[m,y0],[m,y1]]}
+  const m=(y0+y1)/2; return [[x0,m],[x1,m]];
 }
 function poly(ctx,w,h,pts,stroke,fill){
   if(!pts||pts.length<2)return;
@@ -107,51 +302,160 @@ function poly(ctx,w,h,pts,stroke,fill){
   ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke();
   if(fill&&pts.length>2){ctx.fillStyle=fill;ctx.fill()}
 }
+function drawLine(ctx,w,h,a,b,stroke){
+  ctx.beginPath();ctx.moveTo(a[0]*w,a[1]*h);ctx.lineTo(b[0]*w,b[1]*h);
+  ctx.strokeStyle=stroke;ctx.lineWidth=4;ctx.stroke();
+}
+function isRect(){return (drawMode[tool]||"rect")==="rect"}
+function syncMode(){
+  document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("on", b.dataset.m===(drawMode[tool]||"rect")));
+  if(isRect()) $("hint").textContent=tool==="tripwire"
+    ?"Arraste um retângulo: a linha do portão fica no meio (lado mais estreito)."
+    :"Clique e arraste para soltar um retângulo.";
+  else $("hint").textContent=tool==="tripwire"
+    ?"Dois cliques: início e fim da linha do tripwire."
+    :"Clique os cantos; duplo-clique fecha o polígono.";
+}
 function draw(){
   const cv=$("cv"), img=$("still");
   if(!img.naturalWidth){cv.width=cv.height=0;return}
   cv.width=img.naturalWidth;cv.height=img.naturalHeight;
   const ctx=cv.getContext("2d"), w=cv.width, h=cv.height;
-  geo.include_zones.forEach(z=>poly(ctx,w,h,z,col.include,"rgba(51,204,51,.15)"));
-  geo.ignore_zones.forEach(z=>poly(ctx,w,h,z,col.ignore,"rgba(238,68,68,.2)"));
-  if(geo.loiter_zone.length) poly(ctx,w,h,geo.loiter_zone,col.loiter,"rgba(255,204,0,.15)");
+  ctx.font="16px system-ui";
+  geo.include_zones.forEach(z=>{poly(ctx,w,h,z,col.include,"rgba(51,204,51,.18)");ctx.fillStyle=col.include;ctx.fillText("scan", z[0][0]*w+6, z[0][1]*h+18)});
+  geo.ignore_zones.forEach(z=>{poly(ctx,w,h,z,col.ignore,"rgba(238,68,68,.22)");ctx.fillStyle=col.ignore;ctx.fillText("ignorar", z[0][0]*w+6, z[0][1]*h+18)});
+  if(geo.loiter_zone.length){poly(ctx,w,h,geo.loiter_zone,col.loiter,"rgba(255,204,0,.18)");ctx.fillStyle=col.loiter;ctx.fillText("loiter", geo.loiter_zone[0][0]*w+6, geo.loiter_zone[0][1]*h+18)}
   geo.tripwires.forEach(t=>{
     const a=t.line[0],b=t.line[1];
-    ctx.beginPath();ctx.moveTo(a[0]*w,a[1]*h);ctx.lineTo(b[0]*w,b[1]*h);
-    ctx.strokeStyle=col.tripwire;ctx.lineWidth=3;ctx.stroke();
+    drawLine(ctx,w,h,a,b,col.tripwire);
+    ctx.fillStyle=col.tripwire;ctx.fillText(t.name||"portão", a[0]*w+6, a[1]*h+16);
   });
   if(draft.length){
-    if(tool==="tripwire") poly(ctx,w,h,draft,col.draft);
+    if(isRect()){
+      poly(ctx,w,h,draft,col.draft,"rgba(229,177,77,.18)");
+      if(tool==="tripwire"){const ln=gateLine(draft);drawLine(ctx,w,h,ln[0],ln[1],col.draft)}
+    } else if(tool==="tripwire") poly(ctx,w,h,draft,col.draft);
     else poly(ctx,w,h,draft,col.draft,"rgba(229,177,77,.12)");
     draft.forEach(p=>{ctx.fillStyle=col.draft;ctx.beginPath();ctx.arc(p[0]*w,p[1]*h,5,0,6.28);ctx.fill()});
   }
 }
+function commitRect(box){
+  const xs=box.map(p=>p[0]), ys=box.map(p=>p[1]);
+  if(Math.max(...xs)-Math.min(...xs)<0.012 && Math.max(...ys)-Math.min(...ys)<0.012) return;
+  if(tool==="include") geo.include_zones=[box];
+  else if(tool==="ignore") geo.ignore_zones.push(box);
+  else if(tool==="loiter") geo.loiter_zone=box;
+  else geo.tripwires.push({name:"portão "+(geo.tripwires.length+1),line:gateLine(box),direction:$("tdir").value});
+}
 function closePoly(){
-  if(draft.length<3)return;
+  if(draft.length<3) return;
   if(tool==="include") geo.include_zones=[draft.slice()];
   else if(tool==="ignore") geo.ignore_zones.push(draft.slice());
   else if(tool==="loiter") geo.loiter_zone=draft.slice();
   draft=[];draw();
 }
-$("cv").onclick=e=>{
-  const p=pt(e);
+function addPoint(p){
   if(tool==="tripwire"){
     draft.push(p);
     if(draft.length===2){
-      geo.tripwires.push({name:"linha "+(geo.tripwires.length+1),line:draft.slice(),direction:$("tdir").value});
+      geo.tripwires.push({name:"portão "+(geo.tripwires.length+1),line:draft.slice(),direction:$("tdir").value});
       draft=[];
     }
   } else draft.push(p);
   draw();
+}
+function mins(hhmm){const [h,m]=hhmm.split(":").map(Number);return h*60+m}
+function paintTl(){
+  const box=$("tl");box.innerHTML="";
+  const now=new Date(), nm=now.getHours()*60+now.getMinutes(), pct=nm/1440*100;
+  DAYS.forEach((name,di)=>{
+    const lab=document.createElement("div");lab.className="dim";lab.textContent=name;
+    const bar=document.createElement("div");bar.className="bar";
+    (sched.windows||[]).forEach(w=>{
+      if(!(w.days||[]).includes(di)) return;
+      const a=mins(w.start), b=mins(w.end);
+      const add=(from,to)=>{const s=document.createElement("div");s.className="seg";
+        s.style.left=(from/1440*100)+"%";s.style.width=((to-from)/1440*100)+"%";bar.append(s)};
+      if(a<=b) add(a,b); else {add(a,1440);add(0,b)}
+    });
+    if(sched.enabled && now.getDay()===((di+1)%7)){const n=document.createElement("div");n.className="now";n.style.left=pct+"%";bar.append(n)}
+    box.append(lab,bar);
+  });
+}
+function renderWins(){
+  const box=$("wins");box.innerHTML="";
+  setSw($("schEn"), sched.enabled);
+  (sched.windows||[]).forEach((w,i)=>{
+    const card=document.createElement("div");card.className="card win";
+    const days=document.createElement("div");days.id="days";days.style.display="flex";days.style.gap="4px";
+    DAYS.forEach((n,d)=>{
+      const b=document.createElement("button");b.type="button";b.textContent=n;
+      b.className=(w.days||[]).includes(d)?"on":"";
+      b.onclick=()=>{const s=new Set(w.days||[]);s.has(d)?s.delete(d):s.add(d);w.days=[...s].sort();renderWins()};
+      days.append(b);
+    });
+    const stI=document.createElement("input");stI.type="time";stI.value=w.start||"23:00";
+    stI.onchange=()=>{w.start=stI.value};
+    const enI=document.createElement("input");enI.type="time";enI.value=w.end||"07:00";
+    enI.onchange=()=>{w.end=enI.value};
+    const del=document.createElement("button");del.type="button";del.textContent="remover";
+    del.onclick=()=>{sched.windows.splice(i,1);renderWins()};
+    card.append(days,stI,document.createTextNode("→"),enI,del);
+    box.append(card);
+  });
+  paintTl();
+}
+async function loadSch(){
+  const j=await (await api("/v1/schedule")).json();
+  sched=j.result||{enabled:false,windows:[]};
+  if(!sched.windows) sched.windows=[];
+  renderWins();
+}
+async function loadSet(){
+  const j=await (await api("/v1/settings")).json();
+  const s=j.result||{};
+  ["notify","requirePerson","behaviorOnly"].forEach(k=>setSw($("s-"+k), s[k]));
+  $("s-sensitivity").value=s.sensitivity??5;$("sensV").textContent=s.sensitivity??5;
+  ["personMinHits","cooldownSeconds","maxNotificationsPerHour","keepDays","maxSnapshotsMb"].forEach(k=>{
+    if(s[k]!=null) $("s-"+k).value=s[k];
+  });
+}
+$("cv").onpointerdown=e=>{
+  if(!isRect()) return;
+  e.preventDefault();$("cv").setPointerCapture(e.pointerId);
+  drag={a:pt(e)};draft=rectPoly(drag.a, drag.a);draw();
 };
-$("cv").ondblclick=e=>{e.preventDefault();if(tool!=="tripwire")closePoly()};
+$("cv").onpointermove=e=>{
+  if(!drag) return;
+  draft=rectPoly(drag.a, pt(e));draw();
+};
+$("cv").onpointerup=e=>{
+  if(!drag) return;
+  commitRect(rectPoly(drag.a, pt(e)));
+  drag=null;draft=[];draw();
+};
+$("cv").onpointercancel=()=>{drag=null;draft=[];draw()};
+$("cv").onclick=e=>{if(!isRect()) addPoint(pt(e))};
+$("cv").ondblclick=e=>{e.preventDefault();if(!isRect()&&tool!=="tripwire") closePoly()};
 $("still").onload=draw;
 document.querySelectorAll(".tool").forEach(b=>b.onclick=()=>{
   document.querySelectorAll(".tool").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on");tool=b.dataset.t;draft=[];draw();
+  b.classList.add("on");tool=b.dataset.t;drag=null;draft=[];syncMode();draw();
 });
-$("cam").onchange=()=>{const c=currentCam();if(c){geo=fromCam(c);$("loiterS").value=geo.loiter_seconds||30;draw()}};
-$("undo").onclick=()=>{draft.pop();draw()};
+document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{
+  drawMode[tool]=b.dataset.m;
+  localStorage.setItem("ktsentinel-drawmode", JSON.stringify(drawMode));
+  drag=null;draft=[];syncMode();draw();
+});
+$("cam").onchange=()=>{const c=currentCam();if(c){applyCam(c);stillCam=null;loadStill()}};
+$("undo").onclick=()=>{
+  if(draft.length){draft.pop();draw();return}
+  if(tool==="include") geo.include_zones=[];
+  else if(tool==="ignore") geo.ignore_zones.pop();
+  else if(tool==="tripwire") geo.tripwires.pop();
+  else geo.loiter_zone=[];
+  draft=[];drag=null;draw();
+};
 $("clear").onclick=()=>{
   if(tool==="include") geo.include_zones=[];
   else if(tool==="ignore") geo.ignore_zones=[];
@@ -159,33 +463,55 @@ $("clear").onclick=()=>{
   else geo.loiter_zone=[];
   draft=[];draw();
 };
-$("foto").onclick=async()=>{
-  const id=$("cam").value;$("gmsg").textContent="pedindo um frame…";
-  let r=await api("/v1/preview?id="+id);
-  if(!r.ok){
-    const ev=(await (await api("/v1/events?limit=20")).json()).result||[];
-    const hit=ev.find(e=>String(e.cameraId)===id)||ev[0];
-    if(hit) r=await api("/v1/snapshot?id="+hit.id);
-  }
-  if(!r.ok){$("gmsg").textContent="sem frame (câmera offline?)";return}
-  const b=await r.blob();
-  const prev=imgUrl;imgUrl=URL.createObjectURL(b);$("still").src=imgUrl;if(prev) URL.revokeObjectURL(prev);$("gmsg").textContent="";
-};
+$("foto").onclick=()=>loadStill(true);
 $("saveg").onclick=async()=>{
   const id=$("cam").value;
+  const bo=$("camBO").value;
   const body={include_zones:geo.include_zones,ignore_zones:geo.ignore_zones,tripwires:geo.tripwires,
-    loiter_zone:geo.loiter_zone,loiter_seconds:Number($("loiterS").value)||null};
+    loiter_zone:geo.loiter_zone,loiter_seconds:Number($("loiterS").value)||null,
+    behavior_only: bo==="inherit"?null: bo==="true"};
   const r=await api("/v1/cameras/"+id+"/geometry",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   const j=await r.json();
-  $("gmsg").textContent=j.ok?"salvo (câmera reiniciada com as zonas)":(j.error||"erro");
+  msg("gmsg", j.ok?"salvo (câmera reiniciada com as zonas)":(j.error||"erro"));
   if(j.ok) load();
 };
-$("tab-ev").onclick=()=>{tab="ev";$("tab-ev").classList.add("on");$("tab-z").classList.remove("on");load()};
-$("tab-z").onclick=()=>{tab="z";$("tab-z").classList.add("on");$("tab-ev").classList.remove("on");load()};
-$("go").onclick=()=>{token=$("tok").value.trim();sessionStorage.setItem("token",token);load()};
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{tab=b.dataset.t;load()});
+$("go").onclick=()=>{token=$("tok").value.trim();localStorage.setItem("ktsentinel-token",token);load()};
 $("refresh").onclick=load;
-$("arm").onclick=async()=>{await api("/v1/arm",{method:"POST"});load()};
-$("disarm").onclick=async()=>{if(confirm("Desarmar o Guard?")){await api("/v1/disarm",{method:"POST"});load()}};
-$("testn").onclick=async()=>{const r=await api("/v1/test-notification",{method:"POST"});$("gmsg").textContent=r.ok?"aviso de teste enviado":"falhou o teste";};
+$("armSw").onclick=async()=>{
+  if(st&&st.armed){if(!confirm("Desarmar o Guard?"))return;await api("/v1/disarm",{method:"POST"})}
+  else await api("/v1/arm",{method:"POST"});
+  load();
+};
+$("testn").onclick=async()=>{const r=await api("/v1/test-notification",{method:"POST"});msg("gmsg", r.ok?"aviso de teste enviado":"falhou o teste");msg("setMsg", r.ok?"aviso de teste enviado":"falhou o teste")};
+$("schEn").onclick=()=>{sched.enabled=!sched.enabled;renderWins()};
+$("addWin").onclick=()=>{sched.windows=sched.windows||[];sched.windows.push({days:[0,1,2,3,4,5,6],start:"23:00",end:"07:00"});renderWins()};
+$("saveSch").onclick=async()=>{
+  const r=await api("/v1/schedule",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({enabled:!!sched.enabled,windows:sched.windows||[]})});
+  const j=await r.json();
+  msg("schMsg", j.ok?"agenda salva":(j.error||"erro"));
+  if(j.ok){sched=j.result;renderWins();loadStatus()}
+};
+$("s-sensitivity").oninput=()=>{$("sensV").textContent=$("s-sensitivity").value};
+["s-notify","s-requirePerson","s-behaviorOnly"].forEach(id=>$(id).onclick=()=>$(id).classList.toggle("on"));
+$("saveSet").onclick=async()=>{
+  const body={
+    notify:$("s-notify").classList.contains("on"),
+    requirePerson:$("s-requirePerson").classList.contains("on"),
+    behaviorOnly:$("s-behaviorOnly").classList.contains("on"),
+    sensitivity:Number($("s-sensitivity").value),
+    personMinHits:Number($("s-personMinHits").value),
+    cooldownSeconds:Number($("s-cooldownSeconds").value),
+    maxNotificationsPerHour:Number($("s-maxNotificationsPerHour").value),
+    keepDays:Number($("s-keepDays").value),
+    maxSnapshotsMb:Number($("s-maxSnapshotsMb").value),
+  };
+  const r=await api("/v1/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json();
+  msg("setMsg", j.ok?"ajustes salvos":(j.error||"erro"));
+};
+setInterval(()=>{if(authed) loadStatus()}, 4000);
+syncMode();
 load();
 </script></body></html>

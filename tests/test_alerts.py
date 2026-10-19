@@ -100,17 +100,16 @@ def test_require_person_blocks_motion_only(tmp_path):
     t = [0.0]
     am = AlertManager(tmp_path, Rules(require_person=True), [lambda n, b: sent.append(b)], clock=lambda: t[0])
     _run_event(am, t)
-    assert not sent
-    ev = am.list_events()[0]
-    assert ev["reason"] == "sem_pessoa" and ev["person"] is False
+    assert not sent and am.list_events() == []
 
 
 def test_require_person_notifies_when_person_seen_late(tmp_path):
     import time
     sent = []
     t = [0.0]
-    am = AlertManager(tmp_path, Rules(require_person=True), [lambda n, b: sent.append(b)], clock=lambda: t[0])
-    _run_event(am, t, person_at=4)
+    am = AlertManager(tmp_path, Rules(require_person=True, min_event_seconds=1),
+                      [lambda n, b: sent.append(b)], clock=lambda: t[0])
+    _run_event(am, t, person_at=2)
     time.sleep(0.3)
     assert len(sent) == 1 and sent[0].startswith("Pessoa detectada")
     assert am.list_events()[0]["person"] is True
@@ -145,6 +144,20 @@ def test_behavior_only_registra_movimento_com_pessoa(tmp_path):
     e = am.list_events()[0]
     assert e["reason"] == "so_registro" and not e["notified"]
     assert am.list_events(only_notified=True) == []
+
+
+def test_camera_behavior_only_override(tmp_path):
+    """Varanda (behavior_only=False) avisa pessoa; Camera 1 (True) só registra."""
+    from sentinel_guard.camera import Camera
+    am, t, sent = make(tmp_path, behavior_only=True)
+    varanda = Camera(id=2, name="Varanda", rtsp_url="rtsp://h/x", behavior_only=False)
+    for s in range(0, 6):
+        t[0] = s
+        am.motion(varanda, FRAME, 3.0, (0.1, 0.1, 0.2, 0.2), True)
+    t[0] = 20
+    am.tick()
+    wait_threads()
+    assert sent and sent[0].startswith("Pessoa detectada")
 
 
 def test_behavior_only_ainda_notifica_loiter(tmp_path):

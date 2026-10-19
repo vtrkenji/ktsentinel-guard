@@ -38,12 +38,12 @@ class DetectionConfig:
     sensitivity: int = 5
     min_area_pct: float = 0.5
     min_consecutive_frames: int = 3
-    fps: float = 5.0
+    fps: float = 2.0                  # alarme, não tracking: 2 Hz no vazio basta
     history: int = 500
     warmup_seconds: float = 10.0
     person_filter: bool = False       # confirma pessoa com modelo leve quando há movimento
     person_confidence: float = 0.5
-    person_check_seconds: float = 0.5
+    person_check_seconds: float = 1.0
     person_min_hits: int = 2          # detecções de pessoa seguidas para confirmar (evita falso positivo de 1 frame)
     person_model_dir: Path | None = None
 
@@ -188,6 +188,14 @@ def parse_geometry(data: dict, cam_id=0) -> dict:
     zone = data.get("loiter_zone") or []
     if zone:
         out["loiter_zone"] = _zones({"id": cam_id, "z": [zone]}, "z")[0]
+    if "behavior_only" in data:
+        v = data["behavior_only"]
+        if v is None:
+            out["behavior_only"] = None
+        elif isinstance(v, bool):
+            out["behavior_only"] = v
+        else:
+            raise ConfigError(f"behavior_only da câmera {cam_id} deve ser true/false")
     return out
 
 
@@ -302,6 +310,7 @@ def load_config(path: Path, require_private: bool = True) -> Config:
             tripwires=_tripwires(c),
             loiter_seconds=float(c["loiter_seconds"]) if c.get("loiter_seconds") else None,
             loiter_zone=(_zones({"id": c["id"], "z": [c["loiter_zone"]]}, "z")[0] if c.get("loiter_zone") else []),
+            behavior_only=bool(c["behavior_only"]) if "behavior_only" in c else None,
         ))
     if any(c.analytics for c in cfg.cameras) and not cfg.detection.person_filter:
         raise ConfigError("tripwire/loiter_seconds exigem [detection].person_filter = true")

@@ -60,8 +60,11 @@ def test_parse_and_overlay_geometry(tmp_path):
         "tripwires": [{"name": "portão", "line": [[0.5, 0], [0.5, 1]], "direction": "ab"}],
         "loiter_seconds": 20,
         "loiter_zone": [[0.1, 0.4], [0.9, 0.4], [0.9, 0.9], [0.1, 0.9]],
+        "behavior_only": False,
     }, 1)
     assert g["tripwires"][0]["direction"] == "ab" and g["loiter_seconds"] == 20
+    assert g["behavior_only"] is False
+    assert parse_geometry({"behavior_only": None})["behavior_only"] is None
     with pytest.raises(ConfigError, match="line"):
         parse_geometry({"tripwires": [{"line": [[0, 0]]}]})
     cfg = load_config(write(tmp_path, BASE))
