@@ -27,11 +27,55 @@ def test_set_get_e_persistencia(tmp_path):
 
 def test_desativar_mantem_janelas_e_arma_sempre(tmp_path):
     d = make(tmp_path)
+    d._clock = lambda: datetime(2026, 10, 22, 12, 0)
     d.cmd_set_schedule([{"days": [0], "start": "01:00", "end": "02:00"}])
     d.cmd_set_schedule([{"days": [0], "start": "01:00", "end": "02:00"}], enabled=False)
     assert d.cmd_get_schedule()["enabled"] is False
-    assert d.is_armed()
     assert len(d.cmd_get_schedule()["windows"]) == 1
+    d.cmd_arm()
+    assert d._watching(datetime(2026, 10, 22, 12, 0))
+    assert d._watching(datetime(2026, 10, 19, 1, 30))
+
+
+def test_manual_liga_fora_da_janela_e_desliga_dentro(tmp_path):
+    wins = [{"days": list(range(7)), "start": "00:00", "end": "04:00"}]
+    noon = datetime(2026, 10, 22, 10, 0)  # quinta
+    night = datetime(2026, 10, 22, 2, 0)
+    on = make(tmp_path)
+    on.cmd_set_schedule(wins)
+    on.cmd_arm()
+    assert on._watching(noon) is True
+    assert on.override is True
+    off = make(tmp_path)
+    off.cmd_set_schedule(wins)
+    off._watching(night)
+    off.cmd_disarm()
+    assert off._watching(night) is False
+    assert off.override is False
+
+
+def test_borda_libera_manual_e_agenda_assume(tmp_path):
+    d = make(tmp_path)
+    d.cmd_set_schedule([{"days": list(range(7)), "start": "00:00", "end": "04:00"}])
+    d.cmd_arm()
+    assert d._watching(datetime(2026, 10, 22, 10, 0)) is True
+    assert d._watching(datetime(2026, 10, 22, 1, 0)) is True
+    assert d.override is None
+    assert d._watching(datetime(2026, 10, 22, 5, 0)) is False
+    assert d.armed is False
+    assert d._watching(datetime(2026, 10, 23, 0, 30)) is True
+    assert d.armed is True
+
+
+def test_ligar_agenda_fora_da_janela_desarma_ate_o_horario(tmp_path):
+    d = make(tmp_path)
+    d._clock = lambda: datetime(2026, 10, 22, 10, 0)
+    d.cmd_arm()
+    d.cmd_set_schedule([{"days": list(range(7)), "start": "00:00", "end": "04:00"}], enabled=False)
+    d.cmd_set_schedule([{"days": list(range(7)), "start": "00:00", "end": "04:00"}], enabled=True)
+    assert d.override is None and d.armed is False
+    assert d._watching(datetime(2026, 10, 22, 10, 0)) is False
+    assert d._watching(datetime(2026, 10, 22, 1, 0)) is True
 
 
 @pytest.mark.parametrize("w", [{"days": [7], "start": "01:00", "end": "02:00"},

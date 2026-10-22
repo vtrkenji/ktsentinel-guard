@@ -29,15 +29,43 @@ class Daemon:
         self.armed = True
         self.schedule = []
         self.schedule_enabled = True
+        # True = ligado na hora; False = desligado na hora; None = a agenda manda.
+        self.override: bool | None = None
+        self._window_open: bool | None = None
+        self._in_window = False
+        self._clock = datetime.now
         self._lock = threading.RLock()
         self._stop = threading.Event()
 
     def is_armed(self) -> bool:
-        """Armado manualmente e, se houver agenda, dentro de uma janela."""
-        if not self.armed:
+        """Ligado se o manual forçou, ou se a agenda (quando ativa) está na janela."""
+        with self._lock:
+            return self._watching(self._clock())
+
+    def _watching(self, now: datetime) -> bool:
+        """Quem chama precisa já estar com self._lock. Atualiza armed nas bordas da agenda."""
+        windows = self.schedule if self.schedule_enabled else []
+        in_window = bool(windows) and any(w.active(now) for w in windows)
+        self._in_window = in_window
+        if windows:
+            prev = self._window_open
+            self._window_open = in_window
+            if prev is not None and prev != in_window:
+                if self.override is not None:
+                    log.info("agenda %s; comando manual liberado", "entrou" if in_window else "saiu")
+                self.override = None
+                self.armed = in_window
+                self._save_armed()
+            elif self.override is None and self.armed != in_window:
+                self.armed = in_window
+                self._save_armed()
+        if self.override is True:
+            return True
+        if self.override is False:
             return False
-        sched = self.schedule
-        return not sched or any(w.active(datetime.now()) for w in sched)
+        if windows:
+            return in_window
+        return self.armed
 
     def _settings_file(self):
         return self.cfg.data_dir / "settings.json"
@@ -63,25 +91,30 @@ class Daemon:
         try:
             data = json.loads(self._schedule_file().read_text())
         except Exception:
-            self.schedule_enabled = True
+            self.schedule_enabled = bool(self.cfg.schedule)
             return list(self.cfg.schedule)
         self.schedule_enabled = bool(data.get("enabled", True))
-        wins = [parse_window(w) for w in data.get("windows", [])]
-        return wins if self.schedule_enabled else []
+        return [parse_window(w) for w in data.get("windows", [])]
 
 
     # --- ciclo de vida ---
     def _state_file(self):
         return self.cfg.data_dir / "state.json"
 
-    def _load_armed(self) -> bool:
+    def _load_armed(self) -> None:
         try:
-            return bool(json.loads(self._state_file().read_text())["armed"])
+            data = json.loads(self._state_file().read_text())
+            self.armed = bool(data["armed"])
+            if "override" in data and data["override"] is not None:
+                self.override = bool(data["override"])
+            else:
+                self.override = None
         except Exception:
-            return self.cfg.armed
+            self.armed = self.cfg.armed
+            self.override = True if self.armed else False
 
     def _save_armed(self) -> None:
-        self._state_file().write_text(json.dumps({"armed": self.armed}))
+        self._state_file().write_text(json.dumps({"armed": self.armed, "override": self.override}))
 
     def _notifiers(self):
         out = []
@@ -110,8 +143,10 @@ class Daemon:
             except Exception as e:
                 log.error("geometry.json ignorado: %s", e)
             self._enforce_fail_closed()
-            self.armed = self._load_armed()
+            self._load_armed()
+            self._window_open = None
             self.schedule = self._load_schedule()
+            watching = self._watching(self._clock())
             self._notifier_list = self._notifiers()
             self.alerts = AlertManager(self.cfg.data_dir, self.cfg.rules, self._notifier_list)
             self.workers = [
@@ -121,7 +156,7 @@ class Daemon:
                 if i:
                     time.sleep(2.0)
                 w.start()
-            log.info("%d câmera(s) ativa(s); armado=%s", len(self.workers), self.armed)
+            log.info("%d câmera(s) ativa(s); armado=%s vigiando=%s", len(self.workers), self.armed, watching)
 
     def stop_workers(self) -> None:
         with self._lock:
@@ -175,12 +210,14 @@ class Daemon:
                 warnings.append("modelo de pessoa ausente; nenhum aviso até instalar (download_models.sh)")
             if r.behavior_only and not any(c.analytics for c in self.cfg.cameras if c.is_active):
                 warnings.append("só permanência/entrada ligado, mas nenhuma câmera tem tripwire ou loiter")
-            if self.armed and self.is_armed() and not any(c.get("state") == "online" for c in cams):
+            watching = self.is_armed()
+            if watching and not any(c.get("state") == "online" for c in cams):
                 warnings.append("armado, porém nenhuma câmera online")
             if r.notify and not self.cfg.fcm.enabled and not self.cfg.ntfy.enabled:
                 warnings.append("avisos ligados sem FCM/ntfy configurado")
             return {
-                "armed": self.armed, "scheduleActive": self.is_armed(),
+                "armed": self.armed, "scheduleActive": watching,
+                "manualOverride": self.override, "inWindow": self._in_window,
                 "notify": r.notify, "requirePerson": r.require_person, "behaviorOnly": r.behavior_only,
                 "personFilter": d.person_filter, "personModel": person_model,
                 "cameras": cams, "warnings": warnings,
@@ -189,16 +226,9 @@ class Daemon:
 
     def cmd_get_schedule(self):
         with self._lock:
-            if self.schedule_enabled:
-                wins = self.schedule
-            else:
-                try:
-                    wins = [parse_window(w) for w in json.loads(self._schedule_file().read_text())["windows"]]
-                except Exception:
-                    wins = []
-            return {"enabled": self.schedule_enabled and bool(self.schedule),
+            return {"enabled": self.schedule_enabled,
                     "windows": [{"days": list(w.days), "start": w.start.strftime("%H:%M"),
-                                 "end": w.end.strftime("%H:%M")} for w in wins]}
+                                 "end": w.end.strftime("%H:%M")} for w in self.schedule]}
 
     def cmd_set_schedule(self, windows, enabled=True):
         """windows: [{"days":[0..6],"start":"HH:MM","end":"HH:MM"}]; 0=segunda."""
@@ -208,9 +238,17 @@ class Daemon:
         with self._lock:
             data = [{"days": list(w.days), "start": w.start.strftime("%H:%M"), "end": w.end.strftime("%H:%M")}
                     for w in parsed]
-            self._schedule_file().write_text(json.dumps({"enabled": bool(enabled), "windows": data}))
-            self.schedule_enabled = bool(enabled)
-            self.schedule = parsed if enabled else []
+            turned = bool(enabled)
+            if turned != self.schedule_enabled:
+                self.override = None
+            self._schedule_file().write_text(json.dumps({"enabled": turned, "windows": data}))
+            self.schedule_enabled = turned
+            self.schedule = parsed
+            self._window_open = None
+            if turned and self.override is None and parsed:
+                self.armed = any(w.active(self._clock()) for w in parsed)
+            self._save_armed()
+            log.info("agenda %s (%d janela(s))", "ligada" if turned else "desligada", len(parsed))
         return self.cmd_get_schedule()
 
     def cmd_get_settings(self):
@@ -242,14 +280,20 @@ class Daemon:
         return self.cmd_get_settings()
 
     def cmd_arm(self):
-        self.armed = True
-        self._save_armed()
-        return {"armed": True}
+        with self._lock:
+            self.override = True
+            self.armed = True
+            self._save_armed()
+            log.info("armado manualmente; vigia agora, a agenda não segura")
+            return {"armed": True, "scheduleActive": True}
 
     def cmd_disarm(self):
-        self.armed = False
-        self._save_armed()
-        return {"armed": False}
+        with self._lock:
+            self.override = False
+            self.armed = False
+            self._save_armed()
+            log.info("desarmado manualmente; parado até o próximo horário da agenda ou um novo armar")
+            return {"armed": False, "scheduleActive": False}
 
     def cmd_list_cameras(self):
         return [c.to_json() for c in self.cfg.cameras]

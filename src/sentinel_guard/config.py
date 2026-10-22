@@ -76,13 +76,19 @@ class ScheduleWindow:
         return (d - 1) % 7 in self.days and t < self.end
 
 
+def _hhmm(value) -> time:
+    parts = str(value).strip().split(":")
+    if len(parts) < 2:
+        raise ValueError(f"horário inválido: {value}")
+    return time(int(parts[0]), int(parts[1]))
+
+
 def parse_window(w: dict) -> ScheduleWindow:
-    h1, m1 = map(int, str(w["start"]).split(":"))
-    h2, m2 = map(int, str(w["end"]).split(":"))
+    start, end = _hhmm(w["start"]), _hhmm(w["end"])
     days = tuple(sorted({int(d) for d in w.get("days", range(7))}))
     if not days or not all(0 <= d <= 6 for d in days):
         raise ValueError("dias devem estar entre 0 (segunda) e 6 (domingo)")
-    return ScheduleWindow(days, time(h1, m1), time(h2, m2))
+    return ScheduleWindow(days, start, end)
 
 
 # Ajustes editáveis pelo app: (seção, atributo, tipo, mínimo, máximo)

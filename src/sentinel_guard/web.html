@@ -116,7 +116,7 @@ input[type=range]{width:160px;accent-color:var(--gold)}
 </div>
 <div id="sch" class="page hidden">
   <div class="row">
-    <div><b>Usar horários</b><div class="dim">Desligado = vigia sempre que estiver armado.</div></div>
+    <div><b>Usar horários</b><div class="dim">Ligado: arma e desarma nestes horários. Desligado: só o interruptor. Armar liga na hora.</div></div>
     <button type="button" id="schEn" class="sw" aria-label="Usar horários"><i></i></button>
   </div>
   <div id="wins"></div>
@@ -169,9 +169,10 @@ function msg(id,t){$(id).textContent=t||""}
 
 function setPill(){
   const p=$("pill"), on=st&&st.scheduleActive, armed=st&&st.armed;
-  p.className="pill "+(on?"on":armed?"pause":"off");
-  $("pillL").textContent=on?"ON":armed?"PAUSA":"OFF";
-  $("pillS").textContent=on?"vigindo agora":armed?"armado, fora da agenda":"desarmado";
+  const manual=st&&st.manualOverride===true&&st.inWindow===false;
+  p.className="pill "+(on?"on":"off");
+  $("pillL").textContent=on?"ON":"OFF";
+  $("pillS").textContent=on?(manual?"ligado no manual":"vigindo agora"):"desarmado";
   setSw($("armSw"), armed);
 }
 function camCard(c){
@@ -484,7 +485,15 @@ $("armSw").onclick=async()=>{
   load();
 };
 $("testn").onclick=async()=>{const r=await api("/v1/test-notification",{method:"POST"});msg("gmsg", r.ok?"aviso de teste enviado":"falhou o teste");msg("setMsg", r.ok?"aviso de teste enviado":"falhou o teste")};
-$("schEn").onclick=()=>{sched.enabled=!sched.enabled;renderWins()};
+$("schEn").onclick=async()=>{
+  sched.enabled=!sched.enabled; renderWins();
+  const r=await api("/v1/schedule",{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({enabled:!!sched.enabled,windows:sched.windows||[]})});
+  const j=await r.json();
+  msg("schMsg", j.ok?(sched.enabled?"horários ligados":"horários desligados"):(j.error||"erro"));
+  if(j.ok){sched=j.result;renderWins();loadStatus()}
+  else sched.enabled=!sched.enabled, renderWins();
+};
 $("addWin").onclick=()=>{sched.windows=sched.windows||[];sched.windows.push({days:[0,1,2,3,4,5,6],start:"23:00",end:"07:00"});renderWins()};
 $("saveSch").onclick=async()=>{
   const r=await api("/v1/schedule",{method:"PUT",headers:{"Content-Type":"application/json"},
