@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinel-guard"
-version = "0.1.1"
+version = "0.1.2"
 description = "kTsentinel Guard: detecção de movimento em câmeras RTSP com alertas FCM"
 requires-python = ">=3.11"
 dependencies = ["numpy", "requests", "google-auth"]

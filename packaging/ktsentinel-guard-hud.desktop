@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=kTsentinel Guard
+Comment=Indicador do alarme no notebook
+Exec=sentinel-guard hud
+Icon=security-high
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

@@ -179,7 +179,8 @@ class Daemon:
             api.start()
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: self._stop.set())
-        signal.signal(signal.SIGHUP, lambda *_: self._safe_reload())
+        if hasattr(signal, "SIGHUP"):
+            signal.signal(signal.SIGHUP, lambda *_: self._safe_reload())
         log.info("daemon pronto em %s", server.path)
         self._stop.wait()
         server.close()

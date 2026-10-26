@@ -14,7 +14,15 @@ def default_data_dir() -> Path:
     return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "ktsentinel-guard"
 
 
+def runtime_dir() -> Path:
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+        path = Path(base) / "ktsentinel-guard"
+    else:
+        path = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/ktsentinel-guard-{os.getuid()}")
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def socket_path() -> Path:
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/ktsentinel-guard-{os.getuid()}"
-    Path(runtime).mkdir(mode=0o700, exist_ok=True)
-    return Path(runtime) / "ktsentinel-guard.sock"
+    return runtime_dir() / "ktsentinel-guard.sock"

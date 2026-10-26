@@ -158,6 +158,9 @@ class Config:
 
 
 def check_private(path: Path) -> None:
+    # No Windows o modo Unix não representa a ACL do perfil; o arquivo fica na pasta do usuário.
+    if os.name == "nt":
+        return
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode & 0o077:
         raise ConfigError(f"{path} tem permissão {mode:04o}; execute: chmod 600 {path}")

@@ -118,6 +118,23 @@ def cmd_test_camera(args):
     return rc
 
 
+def cmd_hud(args):
+    import os
+    import shutil
+    script = Path(__file__).resolve().parent / "hud.py"
+    py = sys.executable
+    try:
+        import PySide6  # noqa: F401
+    except ImportError:
+        system = Path("/usr/bin/python3")
+        found = str(system) if system.exists() else shutil.which("python3")
+        if not found:
+            print("ERRO: PySide6 não está neste Python e não achei python3 do sistema", file=sys.stderr)
+            return 1
+        py = found
+    os.execv(py, [py, str(script), "--config", str(Path(args.config))])
+
+
 def cmd_socket(args):
     from .server import request
     try:
@@ -184,6 +201,7 @@ def main(argv=None):
     tc.add_argument("id", type=int, nargs="?")
     tc.add_argument("--out", default="/tmp/ktsentinel-guard-test")
     tc.set_defaults(fn=cmd_test_camera)
+    sub.add_parser("hud", help="indicador no notebook: ON, agenda ou manual").set_defaults(fn=cmd_hud)
     for name in ("status", "arm", "disarm", "list-cameras", "test-notification", "reload-config"):
         sub.add_parser(name).set_defaults(fn=cmd_socket, cmd=name)
     ev = sub.add_parser("events", help="eventos de movimento com horário para achar no DVR")
